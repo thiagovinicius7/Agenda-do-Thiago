@@ -1,0 +1,284 @@
+package com.example.ui.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.model.CalendarEvent
+import com.example.data.model.Category
+import com.example.data.model.GoogleCalendar
+import com.example.data.model.Habit
+import com.example.data.model.HabitCalculationResult
+import com.example.data.model.Note
+import com.example.data.model.NoteFormat
+import com.example.data.model.NoteItem
+import com.example.data.model.NoteWithItems
+import com.example.data.model.RepeatType
+import com.example.data.model.SyncQueueItem
+import com.example.data.repository.BlocoRepository
+import com.example.util.HabitCalculations
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+
+enum class TopSection {
+  HOJE,
+  MURAL,
+  AGENDA,
+  HABITOS
+}
+
+enum class ActiveOverlay {
+  NONE,
+  NOTE_DETAIL,
+  HABIT_DETAIL,
+  HABIT_CREATE,
+  HABIT_CONCLUDED,
+  EVENT_CREATE,
+  SEARCH,
+  SETTINGS,
+  ONBOARDING,
+  OFFLINE,
+  STATS
+}
+
+enum class CalendarViewMode {
+  MES,
+  SEMANA,
+  DIA
+}
+
+enum class DemoMode {
+  NORMAL,
+  FIRST_USE,
+  EMPTY,
+  D150_CONCLUDED,
+  OFFLINE
+}
+
+data class BlocoUiState(
+  val currentSection: TopSection = TopSection.HOJE,
+  val activeOverlay: ActiveOverlay = ActiveOverlay.NONE,
+  val demoMode: DemoMode = DemoMode.NORMAL,
+  val isDarkTheme: Boolean = false,
+  val selectedNoteId: String? = null,
+  val selectedHabitId: String? = "h_corrida",
+  val selectedCalendarDate: LocalDate = LocalDate.now(),
+  val calendarViewMode: CalendarViewMode = CalendarViewMode.MES,
+  val muralCategoryFilter: String = "todos",
+  val searchQuery: String = "",
+  val searchFilter: String = "tudo", // tudo, notas, agenda, habitos
+  val countInDaysNotation: Boolean = true,
+  val weekStartSunday: Boolean = true,
+  val backgroundSyncEnabled: Boolean = true,
+  val habitsInCalendar: Boolean = true
+)
+
+class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
+
+  private val _uiState = MutableStateFlow(BlocoUiState())
+  val uiState: StateFlow<BlocoUiState> = _uiState.asStateFlow()
+
+  val notesWithItems: StateFlow<List<NoteWithItems>> = repository.notesWithItems
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val habitsWithCalculations: StateFlow<List<HabitCalculationResult>> = repository.habitsWithCalculations
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val categories: StateFlow<List<Category>> = repository.categories
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val calendars: StateFlow<List<GoogleCalendar>> = repository.calendars
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val events: StateFlow<List<CalendarEvent>> = repository.events
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val syncQueue: StateFlow<List<SyncQueueItem>> = repository.syncQueue
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  init {
+    viewModelScope.launch {
+      repository.seedInitialDataIfEmpty()
+    }
+  }
+
+  fun setSection(section: TopSection) {
+    _uiState.value = _uiState.value.copy(currentSection = section, activeOverlay = ActiveOverlay.NONE)
+  }
+
+  fun setOverlay(overlay: ActiveOverlay) {
+    _uiState.value = _uiState.value.copy(activeOverlay = overlay)
+  }
+
+  fun closeOverlay() {
+    _uiState.value = _uiState.value.copy(activeOverlay = ActiveOverlay.NONE)
+  }
+
+  fun setDemoMode(mode: DemoMode) {
+    _uiState.value = when (mode) {
+      DemoMode.NORMAL -> _uiState.value.copy(demoMode = mode, currentSection = TopSection.HOJE, activeOverlay = ActiveOverlay.NONE)
+      DemoMode.FIRST_USE -> _uiState.value.copy(demoMode = mode, activeOverlay = ActiveOverlay.ONBOARDING)
+      DemoMode.EMPTY -> _uiState.value.copy(demoMode = mode, currentSection = TopSection.MURAL, muralCategoryFilter = "vazio", activeOverlay = ActiveOverlay.NONE)
+      DemoMode.D150_CONCLUDED -> _uiState.value.copy(demoMode = mode, currentSection = TopSection.HABITOS, activeOverlay = ActiveOverlay.HABIT_CONCLUDED)
+      DemoMode.OFFLINE -> _uiState.value.copy(demoMode = mode, currentSection = TopSection.AGENDA, activeOverlay = ActiveOverlay.OFFLINE)
+    }
+  }
+
+  fun toggleDarkTheme() {
+    _uiState.value = _uiState.value.copy(isDarkTheme = !_uiState.value.isDarkTheme)
+  }
+
+  fun setMuralFilter(category: String) {
+    _uiState.value = _uiState.value.copy(muralCategoryFilter = category)
+  }
+
+  fun setSearchQuery(query: String) {
+    _uiState.value = _uiState.value.copy(searchQuery = query)
+  }
+
+  fun setSearchFilter(filter: String) {
+    _uiState.value = _uiState.value.copy(searchFilter = filter)
+  }
+
+  fun setCalendarViewMode(mode: CalendarViewMode) {
+    _uiState.value = _uiState.value.copy(calendarViewMode = mode)
+  }
+
+  fun selectCalendarDate(date: LocalDate) {
+    _uiState.value = _uiState.value.copy(selectedCalendarDate = date)
+  }
+
+  fun openNote(noteId: String) {
+    _uiState.value = _uiState.value.copy(selectedNoteId = noteId, activeOverlay = ActiveOverlay.NOTE_DETAIL)
+  }
+
+  fun openHabit(habitId: String) {
+    _uiState.value = _uiState.value.copy(selectedHabitId = habitId, activeOverlay = ActiveOverlay.HABIT_DETAIL)
+  }
+
+  fun toggleChecklistItem(itemId: String, currentDone: Boolean) {
+    viewModelScope.launch {
+      repository.toggleNoteItem(itemId, currentDone)
+    }
+  }
+
+  fun toggleHabitDay(habitId: String, dateEpochDay: Long = HabitCalculations.todayEpochDay()) {
+    viewModelScope.launch {
+      repository.toggleHabitDay(habitId, dateEpochDay)
+    }
+  }
+
+  fun saveNote(
+    id: String?,
+    title: String,
+    body: String,
+    categoryId: String,
+    format: NoteFormat,
+    items: List<String>
+  ) {
+    viewModelScope.launch {
+      val noteId = id ?: "note_${System.currentTimeMillis()}"
+      val note = Note(
+        id = noteId,
+        title = title.ifBlank { "Nova nota" },
+        body = body,
+        categoryId = categoryId,
+        format = format,
+        updatedAt = System.currentTimeMillis()
+      )
+      val noteItems = items.filter { it.isNotBlank() }.mapIndexed { idx, text ->
+        NoteItem(
+          id = "${noteId}_item_$idx",
+          noteId = noteId,
+          text = text,
+          isDone = false,
+          orderIndex = idx
+        )
+      }
+      repository.insertNote(note, noteItems)
+      closeOverlay()
+    }
+  }
+
+  fun saveHabit(
+    name: String,
+    repeatType: RepeatType,
+    repeatDays: String,
+    durationDays: Int,
+    reminderTime: String,
+    showInCalendar: Boolean
+  ) {
+    viewModelScope.launch {
+      val habit = Habit(
+        id = "habit_${System.currentTimeMillis()}",
+        name = name.ifBlank { "Novo hábito" },
+        repeatType = repeatType,
+        repeatDays = repeatDays,
+        durationDays = durationDays,
+        startDateEpochDay = HabitCalculations.todayEpochDay(),
+        reminderTime = reminderTime,
+        showInCalendar = showInCalendar
+      )
+      repository.insertHabit(habit)
+      closeOverlay()
+    }
+  }
+
+  fun saveEvent(
+    title: String,
+    calendarId: String,
+    date: LocalDate,
+    startTimeHour: Int,
+    startTimeMinute: Int,
+    durationMinutes: Int,
+    attachedNoteId: String?,
+    attachedNoteTitle: String?,
+    isLocalOnly: Boolean
+  ) {
+    viewModelScope.launch {
+      val startEpoch = date.atTime(startTimeHour, startTimeMinute).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+      val event = CalendarEvent(
+        id = "event_${System.currentTimeMillis()}",
+        calendarId = calendarId,
+        title = title.ifBlank { "Novo compromisso" },
+        startEpochMillis = startEpoch,
+        endEpochMillis = startEpoch + (durationMinutes * 60 * 1000),
+        attachedNoteId = attachedNoteId,
+        attachedNoteTitle = attachedNoteTitle,
+        isLocalOnly = isLocalOnly,
+        isPendingSync = !isLocalOnly
+      )
+      repository.insertEvent(event)
+      closeOverlay()
+    }
+  }
+
+  fun toggleSetting(key: String) {
+    when (key) {
+      "countInDays" -> _uiState.value = _uiState.value.copy(countInDaysNotation = !_uiState.value.countInDaysNotation)
+      "bgSync" -> _uiState.value = _uiState.value.copy(backgroundSyncEnabled = !_uiState.value.backgroundSyncEnabled)
+      "habitsInCalendar" -> _uiState.value = _uiState.value.copy(habitsInCalendar = !_uiState.value.habitsInCalendar)
+      "weekStart" -> _uiState.value = _uiState.value.copy(weekStartSunday = !_uiState.value.weekStartSunday)
+    }
+  }
+
+  fun retrySync() {
+    viewModelScope.launch {
+      repository.clearSyncQueue()
+    }
+  }
+}
+
+class BlocoViewModelFactory(private val repository: BlocoRepository) : androidx.lifecycle.ViewModelProvider.Factory {
+  @Suppress("UNCHECKED_CAST")
+  override fun <T : ViewModel> create(modelClass: Class<T>): T {
+    if (modelClass.isAssignableFrom(BlocoViewModel::class.java)) {
+      return BlocoViewModel(repository) as T
+    }
+    throw IllegalArgumentException("Unknown ViewModel class")
+  }
+}

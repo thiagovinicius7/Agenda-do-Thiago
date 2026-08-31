@@ -1,0 +1,8 @@
+{
+  "name": "Agenda do Thiago",
+  "description": "Bloco de anotações, agenda e hábitos com o design system Modernist.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
