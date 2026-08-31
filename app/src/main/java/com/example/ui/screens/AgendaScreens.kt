@@ -76,65 +76,149 @@ fun AgendaScreen(
         .fillMaxWidth()
         .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-      when (viewMode) {
-        CalendarViewMode.MES -> {
-          Text(
-            text = "Setembro\n2026",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 40.sp,
-            lineHeight = 38.sp,
-            letterSpacing = (-0.03).sp,
-            color = colors.text
-          )
-        }
-        CalendarViewMode.SEMANA -> {
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
-          ) {
-            Text(
-              text = "31 ago — 6 set",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.ExtraBold,
-              fontSize = 24.sp,
-              lineHeight = 24.sp,
-              letterSpacing = (-0.02).sp,
-              color = colors.text
-            )
-            Text(
-              text = "Semana 36",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.SemiBold,
-              fontSize = 10.sp,
-              color = colors.textSecondary
-            )
+      val isCurrentDayToday = (selectedDate == LocalDate.now())
+
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          when (viewMode) {
+            CalendarViewMode.MES -> {
+              val monthName = selectedDate.format(DateTimeFormatter.ofPattern("MMMM", Locale("pt", "BR"))).replaceFirstChar { it.uppercase() }
+              val yearStr = selectedDate.year.toString()
+              Text(
+                text = "$monthName\n$yearStr",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 38.sp,
+                lineHeight = 36.sp,
+                letterSpacing = (-0.03).sp,
+                color = colors.text
+              )
+            }
+            CalendarViewMode.SEMANA -> {
+              val dayOfWeek = selectedDate.dayOfWeek.value // 1 (Mon) to 7 (Sun)
+              val monday = selectedDate.minusDays((dayOfWeek - 1).toLong())
+              val sunday = monday.plusDays(6)
+              val weekFormatter = DateTimeFormatter.ofPattern("d MMM", Locale("pt", "BR"))
+              val weekRangeStr = "${monday.format(weekFormatter)} — ${sunday.format(weekFormatter)}"
+              val weekNumber = selectedDate.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR)
+
+              Text(
+                text = weekRangeStr,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 24.sp,
+                lineHeight = 24.sp,
+                letterSpacing = (-0.02).sp,
+                color = colors.text
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = "Semana $weekNumber · ${selectedDate.year}",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 10.sp,
+                color = colors.textSecondary
+              )
+            }
+            CalendarViewMode.DIA -> {
+              val dayOfWeekName = selectedDate.format(DateTimeFormatter.ofPattern("EEEE", Locale("pt", "BR"))).uppercase()
+              val dayAndMonth = selectedDate.format(DateTimeFormatter.ofPattern("d 'de' MMMM", Locale("pt", "BR")))
+              val dayEventsCount = events.count { ev ->
+                Instant.ofEpochMilli(ev.startEpochMillis).atZone(ZoneId.systemDefault()).toLocalDate() == selectedDate
+              }
+
+              Text(text = dayOfWeekName, style = SectionLabelStyle, color = colors.textTertiary)
+              Spacer(modifier = Modifier.height(4.dp))
+              Text(
+                text = dayAndMonth,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 30.sp,
+                lineHeight = 30.sp,
+                letterSpacing = (-0.02).sp,
+                color = colors.text
+              )
+              Spacer(modifier = Modifier.height(2.dp))
+              Text(
+                text = if (dayEventsCount == 0) "Nenhum compromisso" else "$dayEventsCount compromisso${if (dayEventsCount > 1) "s" else ""}",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 10.sp,
+                color = colors.textSecondary
+              )
+            }
           }
         }
-        CalendarViewMode.DIA -> {
-          Text(text = "TERÇA", style = SectionLabelStyle, color = colors.textTertiary)
-          Spacer(modifier = Modifier.height(4.dp))
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+
+        // Period Navigation Controls (Previous, Today, Next)
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(4.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Box(
+            modifier = Modifier
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable {
+                val prev = when (viewMode) {
+                  CalendarViewMode.MES -> selectedDate.minusMonths(1)
+                  CalendarViewMode.SEMANA -> selectedDate.minusWeeks(1)
+                  CalendarViewMode.DIA -> selectedDate.minusDays(1)
+                }
+                onSelectDate(prev)
+              }
+              .padding(horizontal = 10.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center
           ) {
             Text(
-              text = "2 de setembro",
+              text = "←",
               fontFamily = ArchivoFont,
-              fontWeight = FontWeight.ExtraBold,
-              fontSize = 34.sp,
-              lineHeight = 34.sp,
-              letterSpacing = (-0.02).sp,
+              fontWeight = FontWeight.Bold,
+              fontSize = 13.sp,
               color = colors.text
             )
+          }
+
+          Box(
+            modifier = Modifier
+              .border(1.dp, if (isCurrentDayToday) colors.accent else colors.rulerStrong, RectangleShape)
+              .background(if (isCurrentDayToday) colors.accent.copy(alpha = 0.1f) else Color.Transparent)
+              .clickable { onSelectDate(LocalDate.now()) }
+              .padding(horizontal = 10.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center
+          ) {
             Text(
-              text = "3 · 1 post-it",
+              text = "Hoje",
               fontFamily = ArchivoFont,
-              fontWeight = FontWeight.SemiBold,
-              fontSize = 10.sp,
-              color = colors.textSecondary
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = if (isCurrentDayToday) colors.accentDark else colors.text
+            )
+          }
+
+          Box(
+            modifier = Modifier
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable {
+                val next = when (viewMode) {
+                  CalendarViewMode.MES -> selectedDate.plusMonths(1)
+                  CalendarViewMode.SEMANA -> selectedDate.plusWeeks(1)
+                  CalendarViewMode.DIA -> selectedDate.plusDays(1)
+                }
+                onSelectDate(next)
+              }
+              .padding(horizontal = 10.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "→",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 13.sp,
+              color = colors.text
             )
           }
         }
@@ -205,10 +289,19 @@ fun AgendaScreen(
         )
       }
       CalendarViewMode.SEMANA -> {
-        AgendaWeekView(events = events, onCreateEvent = onCreateEvent)
+        AgendaWeekView(
+          events = events,
+          selectedDate = selectedDate,
+          onSelectDate = onSelectDate,
+          onCreateEvent = onCreateEvent
+        )
       }
       CalendarViewMode.DIA -> {
-        AgendaDayView(events = events, onCreateEvent = onCreateEvent)
+        AgendaDayView(
+          events = events,
+          selectedDate = selectedDate,
+          onCreateEvent = onCreateEvent
+        )
       }
     }
   }
@@ -222,6 +315,20 @@ private fun AgendaMonthView(
   onCreateEvent: () -> Unit
 ) {
   val colors = LocalBlocoColors.current
+  val firstOfMonth = selectedDate.withDayOfMonth(1)
+  val daysInMonth = selectedDate.lengthOfMonth()
+  // DayOfWeek.MONDAY=1..SUNDAY=7. In Sunday-first header: SUNDAY=0, MONDAY=1..SATURDAY=6
+  val startDayOffset = (firstOfMonth.dayOfWeek.value % 7)
+
+  val totalCells = ((startDayOffset + daysInMonth + 6) / 7) * 7
+  val monthCells = (0 until totalCells).map { idx ->
+    val dayNum = idx - startDayOffset + 1
+    if (dayNum in 1..daysInMonth) {
+      selectedDate.withDayOfMonth(dayNum)
+    } else {
+      null
+    }
+  }
 
   Column(modifier = Modifier.fillMaxWidth()) {
     // Days of week header (D S T Q Q S S)
@@ -245,49 +352,55 @@ private fun AgendaMonthView(
       }
     }
 
-    // Month Grid (September 2026 has 30 days, 1st is Tuesday)
-    val daysData = listOf(
-      Pair(0, ""), Pair(1, "k"), Pair(2, "rk"), Pair(3, "k"), Pair(4, "r"), Pair(5, "kk"), Pair(6, ""),
-      Pair(7, "g"), Pair(8, "k"), Pair(9, "r"), Pair(10, "kg"), Pair(11, ""), Pair(12, "rk"), Pair(13, "g"),
-      Pair(14, ""), Pair(15, "kk"), Pair(16, "r"), Pair(17, "k"), Pair(18, "g"), Pair(19, "rk"), Pair(20, ""),
-      Pair(21, ""), Pair(22, "k"), Pair(23, "rg"), Pair(24, "k"), Pair(25, ""), Pair(26, "kr"), Pair(27, "g"),
-      Pair(28, ""), Pair(29, "k"), Pair(30, "r"), Pair(0, ""), Pair(0, ""), Pair(0, ""), Pair(0, "")
-    )
-
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-      val rows = daysData.chunked(7)
+      val rows = monthCells.chunked(7)
       for (row in rows) {
         Row(modifier = Modifier.fillMaxWidth()) {
-          for ((dayNum, dots) in row) {
-            val isSelected = (dayNum == 2)
+          for (cellDate in row) {
+            val isSelected = cellDate != null && cellDate == selectedDate
+            val dayEvents = if (cellDate != null) {
+              events.filter { ev ->
+                Instant.ofEpochMilli(ev.startEpochMillis)
+                  .atZone(ZoneId.systemDefault())
+                  .toLocalDate() == cellDate
+              }
+            } else {
+              emptyList()
+            }
+
             Box(
               modifier = Modifier
                 .weight(1f)
                 .height(46.dp)
                 .border(width = 0.5.dp, color = colors.rulerWeak)
                 .background(if (isSelected) colors.text else Color.Transparent)
-                .clickable { if (dayNum > 0) onSelectDate(LocalDate.of(2026, 9, dayNum)) }
+                .clickable { if (cellDate != null) onSelectDate(cellDate) }
                 .padding(top = 5.dp),
               contentAlignment = Alignment.TopCenter
             ) {
-              Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                  text = if (dayNum > 0) dayNum.toString() else "",
-                  fontFamily = ArchivoFont,
-                  fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                  fontSize = 12.sp,
-                  color = if (isSelected) colors.canvas else colors.text
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                // Dots for events (r = red, k = black, g = gray)
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                  for (c in dots) {
-                    val dotColor = when (c) {
-                      'r' -> colors.accent
-                      'k' -> if (isSelected) Color.White else colors.text
-                      else -> colors.gridFail
+              if (cellDate != null) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                  Text(
+                    text = cellDate.dayOfMonth.toString(),
+                    fontFamily = ArchivoFont,
+                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = if (isSelected) colors.canvas else colors.text
+                  )
+                  Spacer(modifier = Modifier.height(3.dp))
+                  if (dayEvents.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                      dayEvents.take(3).forEach { ev ->
+                        val dotColor = if (ev.calendarId == "cal_pessoal") {
+                          colors.accent
+                        } else if (isSelected) {
+                          Color.White
+                        } else {
+                          colors.text
+                        }
+                        Box(modifier = Modifier.size(5.dp).background(dotColor))
+                      }
                     }
-                    Box(modifier = Modifier.size(5.dp).background(dotColor))
                   }
                 }
               }
@@ -429,8 +542,19 @@ private fun AgendaMonthView(
 }
 
 @Composable
-private fun AgendaWeekView(events: List<CalendarEvent>, onCreateEvent: () -> Unit) {
+private fun AgendaWeekView(
+  events: List<CalendarEvent>,
+  selectedDate: LocalDate,
+  onSelectDate: (LocalDate) -> Unit,
+  onCreateEvent: () -> Unit
+) {
   val colors = LocalBlocoColors.current
+  val today = LocalDate.now()
+  // Week from Monday to Sunday
+  val dayOfWeek = selectedDate.dayOfWeek.value // 1 (Mon) to 7 (Sun)
+  val monday = selectedDate.minusDays((dayOfWeek - 1).toLong())
+  val weekDays = (0..6).map { monday.plusDays(it.toLong()) }
+  val dayNames = listOf("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
 
   Column(modifier = Modifier.fillMaxWidth()) {
     // 7 Days Header
@@ -440,88 +564,91 @@ private fun AgendaWeekView(events: List<CalendarEvent>, onCreateEvent: () -> Uni
         .border(width = 1.dp, color = colors.rulerWeak)
     ) {
       Box(modifier = Modifier.width(32.dp))
-      val weekDays = listOf(
-        Pair("SEG", "31"), Pair("TER", "1"), Pair("QUA", "2"), Pair("QUI", "3"),
-        Pair("SEX", "4"), Pair("SÁB", "5"), Pair("DOM", "6")
-      )
-      for ((dayStr, numStr) in weekDays) {
-        val isToday = (dayStr == "TER")
+      for (i in 0 until 7) {
+        val date = weekDays[i]
+        val isSelected = (date == selectedDate)
+        val isToday = (date == today)
         Column(
           modifier = Modifier
             .weight(1f)
-            .background(if (isToday) colors.text else Color.Transparent)
+            .background(if (isSelected) colors.text else if (isToday) colors.track else Color.Transparent)
+            .clickable { onSelectDate(date) }
             .padding(vertical = 7.dp),
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          Text(text = dayStr, fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 8.5.sp, color = if (isToday) colors.canvas.copy(alpha = 0.7f) else colors.textTertiary)
+          Text(
+            text = dayNames[i],
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 8.5.sp,
+            color = if (isSelected) colors.canvas.copy(alpha = 0.7f) else if (isToday) colors.accentDark else colors.textTertiary
+          )
           Spacer(modifier = Modifier.height(4.dp))
-          Text(text = numStr, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = if (isToday) colors.canvas else colors.text)
+          Text(
+            text = date.dayOfMonth.toString(),
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = if (isSelected) colors.canvas else if (isToday) colors.accentDark else colors.text
+          )
         }
       }
     }
 
-    // Habit strip
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .border(width = 1.dp, color = colors.rulerWeak)
-        .padding(vertical = 4.dp),
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Text(
-        text = "HÁB",
-        style = SectionLabelStyle,
-        color = colors.textTertiary,
-        modifier = Modifier.width(32.dp).padding(start = 4.dp)
-      )
-      for (i in 0 until 7) {
-        Column(
-          modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-          verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-          if (i == 6) {
-            // Sunday hatch
-            Box(modifier = Modifier.fillMaxWidth().height(17.dp).background(colors.gridFail.copy(alpha = 0.3f)))
-          } else if (i < 2) {
-            Box(modifier = Modifier.fillMaxWidth().height(7.dp).background(colors.accent))
-            Box(modifier = Modifier.fillMaxWidth().height(7.dp).background(if (i == 0) colors.accent else colors.text))
-          } else {
-            Box(modifier = Modifier.fillMaxWidth().height(7.dp).border(1.dp, colors.cellOutline, RectangleShape))
-            Box(modifier = Modifier.fillMaxWidth().height(7.dp).border(1.dp, colors.cellOutline, RectangleShape))
-          }
-        }
-      }
-    }
+    // Hour slots 07..21
+    val hours = listOf("07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21")
+    for (hourStr in hours) {
+      val hourInt = hourStr.toIntOrNull() ?: 0
 
-    // Hour slots 07..20
-    val hours = listOf("07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20")
-    for (hour in hours) {
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .height(40.dp)
+          .height(42.dp)
           .border(width = 0.5.dp, color = colors.rulerWeak)
       ) {
-        Text(text = hour, fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.sp, color = colors.textTertiary, modifier = Modifier.width(32.dp).padding(start = 4.dp, top = 4.dp))
-        for (col in 1..7) {
+        Text(
+          text = hourStr,
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 9.sp,
+          color = colors.textTertiary,
+          modifier = Modifier.width(32.dp).padding(start = 4.dp, top = 4.dp)
+        )
+        for (i in 0 until 7) {
+          val date = weekDays[i]
+          val matchingEvent = events.firstOrNull { ev ->
+            val evDate = Instant.ofEpochMilli(ev.startEpochMillis)
+              .atZone(ZoneId.systemDefault())
+              .toLocalDate()
+            val evHour = Instant.ofEpochMilli(ev.startEpochMillis)
+              .atZone(ZoneId.systemDefault())
+              .hour
+            evDate == date && evHour == hourInt
+          }
+
           Box(
             modifier = Modifier
               .weight(1f)
               .fillMaxSize()
               .border(0.5.dp, colors.rulerWeak, RectangleShape)
+              .clickable { onCreateEvent() }
               .padding(2.dp)
           ) {
-            if (hour == "09" && col == 2) {
-              Box(modifier = Modifier.fillMaxSize().background(colors.text).padding(3.dp)) {
-                Text(text = "Daily", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 8.5.sp, color = Color.White)
-              }
-            } else if (hour == "14" && col == 3) {
-              Box(modifier = Modifier.fillMaxSize().background(colors.accent).padding(3.dp)) {
-                Text(text = "Prova", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 8.5.sp, color = Color.White)
-              }
-            } else if (hour == "15" && col == 5) {
-              Box(modifier = Modifier.fillMaxSize().background(colors.text).padding(3.dp)) {
-                Text(text = "Cliente", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 8.5.sp, color = Color.White)
+            if (matchingEvent != null) {
+              val isPessoal = matchingEvent.calendarId == "cal_pessoal"
+              Box(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .background(if (isPessoal) colors.accent else colors.text)
+                  .padding(2.dp)
+              ) {
+                Text(
+                  text = matchingEvent.title.take(9),
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 8.sp,
+                  color = Color.White
+                )
               }
             }
           }
@@ -548,7 +675,7 @@ private fun AgendaWeekView(events: List<CalendarEvent>, onCreateEvent: () -> Uni
         Text(text = "Trabalho", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp)
       }
       Spacer(modifier = Modifier.weight(1f))
-      Text(text = "Google · 4 min", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp, color = colors.textTertiary)
+      Text(text = "thiagovinicius7@gmail.com", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp, color = colors.textTertiary)
     }
 
     Spacer(modifier = Modifier.height(40.dp))
@@ -556,15 +683,18 @@ private fun AgendaWeekView(events: List<CalendarEvent>, onCreateEvent: () -> Uni
 }
 
 @Composable
-private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit) {
+private fun AgendaDayView(
+  events: List<CalendarEvent>,
+  selectedDate: LocalDate,
+  onCreateEvent: () -> Unit
+) {
   val colors = LocalBlocoColors.current
-  val today = LocalDate.now()
 
-  val todayEvents = events.filter { event ->
+  val dayEvents = events.filter { event ->
     val eventDate = Instant.ofEpochMilli(event.startEpochMillis)
       .atZone(ZoneId.systemDefault())
       .toLocalDate()
-    eventDate == today
+    eventDate == selectedDate
   }
 
   val hours = listOf("06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22")
@@ -572,7 +702,7 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
   Column(modifier = Modifier.fillMaxWidth()) {
     for (hourStr in hours) {
       val hourInt = hourStr.toIntOrNull() ?: 0
-      val hourEvents = todayEvents.filter { ev ->
+      val hourEvents = dayEvents.filter { ev ->
         val evHour = Instant.ofEpochMilli(ev.startEpochMillis)
           .atZone(ZoneId.systemDefault())
           .hour
@@ -670,13 +800,38 @@ fun EventCreateScreen(
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
-  var title by remember { mutableStateOf("Novo compromisso") }
+  var title by remember { mutableStateOf("") }
   var selectedCalendar by remember { mutableStateOf("cal_pessoal") }
-  var selectedDate by remember { mutableStateOf(LocalDate.of(2026, 9, 2)) }
+  val today = remember { LocalDate.now() }
+  var selectedDate by remember { mutableStateOf(today) }
+  var selectedHour by remember { mutableStateOf(14) }
+  var selectedMinute by remember { mutableStateOf(0) }
+  var selectedDuration by remember { mutableStateOf(60) }
   var isAllDay by remember { mutableStateOf(false) }
   var isRepeating by remember { mutableStateOf(false) }
   var hasLocation by remember { mutableStateOf(false) }
-  var attachedPostIt by remember { mutableStateOf<String?>("Cap. 4 — anotações") }
+  var locationText by remember { mutableStateOf("") }
+  var attachedPostIt by remember { mutableStateOf<String?>(null) }
+
+  val dateOptions = listOf(
+    Pair("Hoje", today),
+    Pair("Amanhã", today.plusDays(1)),
+    Pair("+2 dias", today.plusDays(2)),
+    Pair("+3 dias", today.plusDays(3)),
+    Pair("+4 dias", today.plusDays(4))
+  )
+
+  val hourOptions = listOf(8, 9, 10, 11, 14, 15, 16, 18, 19, 20)
+  val durationOptions = listOf(Pair("30m", 30), Pair("1h", 60), Pair("1h30", 90), Pair("2h", 120))
+
+  val formattedSelectedDate = selectedDate.format(
+    DateTimeFormatter.ofPattern("d 'de' MMMM", Locale("pt", "BR"))
+  )
+  val timeDisplay = if (isAllDay) {
+    "Dia inteiro"
+  } else {
+    String.format("%02d:%02d — %02d:%02d", selectedHour, selectedMinute, (selectedHour + (selectedDuration / 60)) % 24, (selectedMinute + (selectedDuration % 60)) % 60)
+  }
 
   Column(
     modifier = modifier
@@ -703,21 +858,33 @@ fun EventCreateScreen(
         .verticalScroll(scrollState)
         .padding(16.dp)
     ) {
-      Text(text = "TÍTULO", style = SectionLabelStyle, color = colors.textTertiary)
+      Text(text = "TÍTULO DO COMPROMISSO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(6.dp))
       BasicTextField(
         value = title,
         onValueChange = { title = it },
-        textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = colors.text),
+        textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = colors.text),
         cursorBrush = SolidColor(colors.accent),
+        decorationBox = { innerTextField ->
+          if (title.isEmpty()) {
+            Text(
+              text = "Ex: Reunião, Treino, Dentista...",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 20.sp,
+              color = colors.textTertiary.copy(alpha = 0.6f)
+            )
+          }
+          innerTextField()
+        },
         modifier = Modifier.fillMaxWidth()
       )
       Spacer(modifier = Modifier.height(6.dp))
       Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(colors.text))
 
-      Spacer(modifier = Modifier.height(22.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
-      // Date and Time 2-Column Matrix
+      // Date and Time Summary Matrix
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -727,31 +894,87 @@ fun EventCreateScreen(
       ) {
         Column(modifier = Modifier.weight(1f).background(colors.canvas).padding(12.dp)) {
           Text(text = "DATA", style = SectionLabelStyle, color = colors.textTertiary)
-          Spacer(modifier = Modifier.height(7.dp))
-          Text(text = "2 set 2026", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = colors.text)
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(text = formattedSelectedDate, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.text)
         }
         Column(modifier = Modifier.weight(1f).background(colors.canvas).padding(12.dp)) {
           Text(text = "HORÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
-          Spacer(modifier = Modifier.height(7.dp))
-          Text(text = if (isAllDay) "Dia inteiro" else "14:00 — 15:00", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = colors.text)
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(text = timeDisplay, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.accentDark)
+        }
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+      Text(text = "SELECIONAR DIA", style = SectionLabelStyle, color = colors.textTertiary)
+      Spacer(modifier = Modifier.height(6.dp))
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+      ) {
+        for ((label, dateVal) in dateOptions) {
+          ViewModeChip(label, isSelected = selectedDate == dateVal) {
+            selectedDate = dateVal
+          }
+        }
+      }
+
+      if (!isAllDay) {
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(text = "HORA DE INÍCIO", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+          for (h in hourOptions.take(5)) {
+            val label = String.format("%02d:00", h)
+            ViewModeChip(label, isSelected = selectedHour == h) {
+              selectedHour = h
+            }
+          }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+          for (h in hourOptions.drop(5)) {
+            val label = String.format("%02d:00", h)
+            ViewModeChip(label, isSelected = selectedHour == h) {
+              selectedHour = h
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(text = "DURAÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          for ((durLabel, durVal) in durationOptions) {
+            ViewModeChip(durLabel, isSelected = selectedDuration == durVal) {
+              selectedDuration = durVal
+            }
+          }
         }
       }
 
       Spacer(modifier = Modifier.height(12.dp))
       Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         ViewModeChip("Dia inteiro", isSelected = isAllDay) { isAllDay = !isAllDay }
-        ViewModeChip("Repetir", isSelected = isRepeating) { isRepeating = !isRepeating }
-        ViewModeChip("Local", isSelected = hasLocation) { hasLocation = !hasLocation }
+        ViewModeChip("Repetir semanal", isSelected = isRepeating) { isRepeating = !isRepeating }
       }
 
-      Spacer(modifier = Modifier.height(22.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // Salvar em qual calendário
       Text(text = "SALVAR EM QUAL CALENDÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
-      Spacer(modifier = Modifier.height(10.dp))
+      Spacer(modifier = Modifier.height(8.dp))
       Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
         CalendarOptionRow(
-          name = "Pessoal",
+          name = "Pessoal (Google)",
           email = "thiagovinicius7@gmail.com",
           color = colors.accent,
           isSelected = selectedCalendar == "cal_pessoal",
@@ -759,28 +982,19 @@ fun EventCreateScreen(
         )
         Ruler1dp()
         CalendarOptionRow(
-          name = "Trabalho",
-          email = "thiago@empresa.com",
+          name = "Trabalho (Google)",
+          email = "thiagovinicius7@gmail.com",
           color = colors.text,
           isSelected = selectedCalendar == "cal_trabalho",
           onClick = { selectedCalendar = "cal_trabalho" }
         )
-        Ruler1dp()
-        CalendarOptionRow(
-          name = "Faculdade",
-          email = "Somente leitura",
-          color = colors.gridFail,
-          isSelected = false,
-          isBlocked = true,
-          onClick = {}
-        )
       }
 
-      Spacer(modifier = Modifier.height(22.dp))
+      Spacer(modifier = Modifier.height(20.dp))
 
       // Post-it anexado
-      Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
-      Spacer(modifier = Modifier.height(10.dp))
+      Text(text = "ANEXAR POST-IT", style = SectionLabelStyle, color = colors.textTertiary)
+      Spacer(modifier = Modifier.height(8.dp))
       if (attachedPostIt != null) {
         Row(
           modifier = Modifier
@@ -789,11 +1003,11 @@ fun EventCreateScreen(
             .padding(12.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
-          Box(modifier = Modifier.size(34.dp).background(colors.postItWorkBg))
+          Box(modifier = Modifier.size(10.dp).background(colors.accent))
           Spacer(modifier = Modifier.width(11.dp))
           Column(modifier = Modifier.weight(1f)) {
             Text(text = attachedPostIt ?: "", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.5.sp, color = colors.text)
-            Text(text = "Estudo · checklist 3 itens", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
+            Text(text = "Post-it anexado ao evento", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
           }
           Text(
             text = "Remover",
@@ -809,17 +1023,17 @@ fun EventCreateScreen(
           modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, colors.rulerWeak, RectangleShape)
-            .clickable { attachedPostIt = "Cap. 4 — anotações" }
-            .padding(14.dp),
+            .clickable { attachedPostIt = "Anotações do compromisso" }
+            .padding(12.dp),
           contentAlignment = Alignment.Center
         ) {
           Text(text = "+ Anexar post-it do mural", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.accent)
         }
       }
 
-      Spacer(modifier = Modifier.height(10.dp))
+      Spacer(modifier = Modifier.height(8.dp))
       Text(
-        text = "O post-it fica visível no dia e no evento. Removê-lo aqui não apaga a nota do mural.",
+        text = "O post-it fica visível no dia e no evento da agenda.",
         fontFamily = ArchivoFont,
         fontWeight = FontWeight.Normal,
         fontSize = 11.sp,
@@ -832,12 +1046,23 @@ fun EventCreateScreen(
       modifier = Modifier
         .fillMaxWidth()
         .padding(16.dp),
-      horizontalArrangement = Arrangement.spacedBy(2.dp)
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
       ModernistButton(
-        text = "Salvar no Google",
+        text = "Salvar no Google Agenda",
         onClick = {
-          onSave(title, selectedCalendar, selectedDate, 14, 0, 60, if (attachedPostIt != null) "n_estudo_1" else null, attachedPostIt, false)
+          val finalTitle = title.ifBlank { "Compromisso" }
+          onSave(
+            finalTitle,
+            selectedCalendar,
+            selectedDate,
+            if (isAllDay) 0 else selectedHour,
+            if (isAllDay) 0 else selectedMinute,
+            if (isAllDay) 1440 else selectedDuration,
+            if (attachedPostIt != null) "note_attached" else null,
+            attachedPostIt,
+            false
+          )
         },
         modifier = Modifier.weight(1f)
       )
@@ -845,7 +1070,18 @@ fun EventCreateScreen(
         modifier = Modifier
           .border(1.dp, colors.rulerStrong, RectangleShape)
           .clickable {
-            onSave(title, selectedCalendar, selectedDate, 14, 0, 60, if (attachedPostIt != null) "n_estudo_1" else null, attachedPostIt, true)
+            val finalTitle = title.ifBlank { "Compromisso" }
+            onSave(
+              finalTitle,
+              selectedCalendar,
+              selectedDate,
+              if (isAllDay) 0 else selectedHour,
+              if (isAllDay) 0 else selectedMinute,
+              if (isAllDay) 1440 else selectedDuration,
+              if (attachedPostIt != null) "note_attached" else null,
+              attachedPostIt,
+              true
+            )
           }
           .padding(14.dp),
         contentAlignment = Alignment.Center

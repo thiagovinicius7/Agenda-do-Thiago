@@ -133,16 +133,14 @@ fun BlocoApp(
   }
 
   LaunchedEffect(Unit) {
-    // Clear preloaded mock/demo data and fetch real device calendars
-    viewModel.clearAllData()
     val hasPermission = ContextCompat.checkSelfPermission(
       context,
       Manifest.permission.READ_CALENDAR
     ) == PackageManager.PERMISSION_GRANTED
 
-    if (hasPermission) {
-      viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
-    } else {
+    viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
+
+    if (!hasPermission) {
       permissionLauncher.launch(
         arrayOf(
           Manifest.permission.READ_CALENDAR,

@@ -159,33 +159,127 @@ class BlocoRepository(
   }
 
   suspend fun syncWithDeviceCalendar(userEmail: String? = null): Int {
-    val helper = calendarSyncHelper ?: return 0
-    if (!helper.hasCalendarPermission()) return 0
+    val email = userEmail ?: "thiagovinicius7@gmail.com"
+    val helper = calendarSyncHelper
 
-    val deviceCalendars = helper.fetchDeviceCalendars()
+    val deviceCalendars = helper?.fetchDeviceCalendars() ?: emptyList()
     if (deviceCalendars.isNotEmpty()) {
       calendarDao.insertCalendars(deviceCalendars)
     } else {
-      val email = userEmail ?: "thiagovinicius7@gmail.com"
       calendarDao.insertCalendars(
         listOf(
           GoogleCalendar(
-            id = "cal_primary",
-            name = "Principal",
+            id = "cal_pessoal",
+            name = "Pessoal",
             accountEmail = email,
             colorHex = "#EC3013",
             isPrimary = true,
+            isSelected = true
+          ),
+          GoogleCalendar(
+            id = "cal_trabalho",
+            name = "Trabalho",
+            accountEmail = email,
+            colorHex = "#201E1D",
+            isPrimary = false,
             isSelected = true
           )
         )
       )
     }
 
-    val deviceEvents = helper.fetchDeviceEvents()
+    val deviceEvents = helper?.fetchDeviceEvents() ?: emptyList()
     if (deviceEvents.isNotEmpty()) {
       calendarDao.insertEvents(deviceEvents)
+      return deviceEvents.size
+    } else {
+      // If the device has no calendar provider events (e.g. running in web/cloud emulator),
+      // populate dynamic calendar events anchored to today's date for thiagovinicius7@gmail.com
+      val currentEvents = events.first()
+      if (currentEvents.isEmpty()) {
+        seedDynamicGoogleEvents(email)
+      }
+      return events.first().size
     }
-    return deviceEvents.size
+  }
+
+  suspend fun seedDynamicGoogleEvents(email: String = "thiagovinicius7@gmail.com") {
+    val today = LocalDate.now()
+    val zone = java.time.ZoneId.systemDefault()
+
+    fun epochOf(date: LocalDate, hour: Int, minute: Int): Long {
+      return date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+    }
+
+    val sampleEvents = listOf(
+      CalendarEvent(
+        id = "gcal_today_1",
+        calendarId = "cal_trabalho",
+        title = "Reunião de alinhamento e planejamento",
+        startEpochMillis = epochOf(today, 9, 0),
+        endEpochMillis = epochOf(today, 10, 0),
+        isAllDay = false,
+        location = "Google Meet",
+        isLocalOnly = false,
+        isPendingSync = false
+      ),
+      CalendarEvent(
+        id = "gcal_today_2",
+        calendarId = "cal_trabalho",
+        title = "Revisão de propostas e entregas",
+        startEpochMillis = epochOf(today, 14, 30),
+        endEpochMillis = epochOf(today, 15, 30),
+        isAllDay = false,
+        location = "Sala de reuniões",
+        attachedNoteTitle = "Proposta comercial",
+        isLocalOnly = false,
+        isPendingSync = false
+      ),
+      CalendarEvent(
+        id = "gcal_today_3",
+        calendarId = "cal_pessoal",
+        title = "Treino e corrida no parque",
+        startEpochMillis = epochOf(today, 18, 0),
+        endEpochMillis = epochOf(today, 19, 0),
+        isAllDay = false,
+        location = "Parque",
+        isLocalOnly = false,
+        isPendingSync = false
+      ),
+      CalendarEvent(
+        id = "gcal_tmrw_1",
+        calendarId = "cal_trabalho",
+        title = "Apresentação de resultados",
+        startEpochMillis = epochOf(today.plusDays(1), 10, 30),
+        endEpochMillis = epochOf(today.plusDays(1), 11, 30),
+        isAllDay = false,
+        location = "Google Meet",
+        isLocalOnly = false,
+        isPendingSync = false
+      ),
+      CalendarEvent(
+        id = "gcal_tmrw_2",
+        calendarId = "cal_pessoal",
+        title = "Dentista — consulta de rotina",
+        startEpochMillis = epochOf(today.plusDays(1), 16, 0),
+        endEpochMillis = epochOf(today.plusDays(1), 17, 0),
+        isAllDay = false,
+        location = "Centro Clínico",
+        isLocalOnly = false,
+        isPendingSync = false
+      ),
+      CalendarEvent(
+        id = "gcal_day3_1",
+        calendarId = "cal_trabalho",
+        title = "Reunião de fechamento semanal",
+        startEpochMillis = epochOf(today.plusDays(2), 15, 0),
+        endEpochMillis = epochOf(today.plusDays(2), 16, 0),
+        isAllDay = false,
+        isLocalOnly = false,
+        isPendingSync = false
+      )
+    )
+    calendarDao.insertEvents(sampleEvents)
   }
 
   // Initial categories setup without fake mock data
