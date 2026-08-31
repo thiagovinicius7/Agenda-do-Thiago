@@ -2,6 +2,7 @@ package com.example
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -134,20 +135,22 @@ fun BlocoApp(
   }
 
   LaunchedEffect(Unit) {
-    val hasPermission = ContextCompat.checkSelfPermission(
-      context,
-      Manifest.permission.READ_CALENDAR
-    ) == PackageManager.PERMISSION_GRANTED
+    val permissionsToRequest = mutableListOf(
+      Manifest.permission.READ_CALENDAR,
+      Manifest.permission.WRITE_CALENDAR
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    val missingPermissions = permissionsToRequest.filter {
+      ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+    }
 
     viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
 
-    if (!hasPermission) {
-      permissionLauncher.launch(
-        arrayOf(
-          Manifest.permission.READ_CALENDAR,
-          Manifest.permission.WRITE_CALENDAR
-        )
-      )
+    if (missingPermissions.isNotEmpty()) {
+      permissionLauncher.launch(missingPermissions.toTypedArray())
     }
   }
 
@@ -190,12 +193,18 @@ fun BlocoApp(
                   habits = habits,
                   notes = notes,
                   events = events,
+                  calendars = calendars,
+                  selectedDate = uiState.selectedHojeDate,
+                  onSelectDate = { viewModel.selectHojeDate(it) },
                   onToggleHabit = { viewModel.toggleHabitDay(it) },
+                  onToggleHabitForDate = { id, epoch -> viewModel.toggleHabitDay(id, epoch) },
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
                   onOpenNote = { noteId -> viewModel.openNote(noteId) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
                   onCreateHabit = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
-                  onCreateNote = { viewModel.openNote("") }
+                  onCreateNote = { viewModel.openNote("") },
+                  onToggleCalendar = { viewModel.toggleCalendarSelection(it) },
+                  onOpenCalendarsDialog = { viewModel.setOverlay(ActiveOverlay.SETTINGS) }
                 )
               }
               TopSection.MURAL -> {
@@ -228,12 +237,14 @@ fun BlocoApp(
                     if (hasPermission) {
                       viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
                     } else {
-                      permissionLauncher.launch(
-                        arrayOf(
-                          Manifest.permission.READ_CALENDAR,
-                          Manifest.permission.WRITE_CALENDAR
-                        )
+                      val perms = mutableListOf(
+                        Manifest.permission.READ_CALENDAR,
+                        Manifest.permission.WRITE_CALENDAR
                       )
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                      }
+                      permissionLauncher.launch(perms.toTypedArray())
                     }
                   }
                 )
@@ -273,14 +284,39 @@ fun BlocoApp(
               habitRes = habitRes,
               onBack = { viewModel.closeOverlay() },
               onToggleToday = { uiState.selectedHabitId?.let { viewModel.toggleHabitDay(it) } },
+              onToggleCell = { epochDay -> uiState.selectedHabitId?.let { viewModel.toggleHabitDay(it, epochDay) } },
+              onMarkPastDays = { fromEpoch, toEpoch, markDone ->
+                uiState.selectedHabitId?.let { viewModel.markPastHabitDays(it, fromEpoch, toEpoch, markDone) }
+              },
+              onUpdateReminder = { newTime ->
+                if (habitRes != null) {
+                  viewModel.updateHabitReminder(context, habitRes.habit.id, habitRes.habit.name, newTime)
+                }
+              },
+              onTestNotification = { habitName ->
+                viewModel.testNotification(context, habitName)
+              },
               onEditRule = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) }
             )
           }
           ActiveOverlay.HABIT_CREATE -> {
             HabitCreateScreen(
               onBack = { viewModel.closeOverlay() },
-              onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay ->
-                viewModel.saveHabit(name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay)
+              onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay, markPast ->
+                viewModel.saveHabit(
+                  name = name,
+                  repeatType = repeatType,
+                  repeatDays = repeatDays,
+                  durationDays = durationDays,
+                  reminderTime = reminder,
+                  showInCalendar = showInCal,
+                  startDateEpochDay = startEpochDay,
+                  markPastDaysAsDone = markPast,
+                  context = context
+                )
+              },
+              onTestNotification = { habitName ->
+                viewModel.testNotification(context, habitName)
               }
             )
           }

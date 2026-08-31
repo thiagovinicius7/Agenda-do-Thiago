@@ -74,7 +74,19 @@ class BlocoRepository(
   }
 
   val calendars: Flow<List<GoogleCalendar>> = calendarDao.getAllCalendars()
-  val events: Flow<List<CalendarEvent>> = calendarDao.getAllEvents()
+  val allEvents: Flow<List<CalendarEvent>> = calendarDao.getAllEvents()
+  val events: Flow<List<CalendarEvent>> = combine(
+    allEvents,
+    calendars
+  ) { eventList, calList ->
+    if (calList.isEmpty()) {
+      eventList
+    } else {
+      val selectedIds = calList.filter { it.isSelected }.map { it.id }.toSet()
+      // Show events belonging to selected calendars, or local events without calId
+      eventList.filter { it.calendarId.isEmpty() || it.calendarId in selectedIds }
+    }
+  }
   val syncQueue: Flow<List<SyncQueueItem>> = syncQueueDao.getAllQueueItems()
 
   // Note actions
@@ -112,6 +124,28 @@ class BlocoRepository(
       habitDao.deleteMark(habitId, dateEpochDay)
     } else {
       habitDao.insertMark(HabitMark(habitId = habitId, dateEpochDay = dateEpochDay, status = HabitMarkStatus.DONE))
+    }
+  }
+
+  suspend fun markPastHabitDays(habitId: String, fromEpochDay: Long, toEpochDay: Long, markAsDone: Boolean = true) {
+    val habits = activeHabits.first()
+    val habit = habits.find { it.id == habitId } ?: return
+    val currentMarks = allHabitMarks.first().filter { it.habitId == habitId }.associateBy { it.dateEpochDay }
+    val newMarks = mutableListOf<HabitMark>()
+
+    for (epochDay in fromEpochDay..toEpochDay) {
+      if (HabitCalculations.isDateInRule(habit, epochDay)) {
+        if (markAsDone) {
+          if (!currentMarks.containsKey(epochDay)) {
+            newMarks.add(HabitMark(habitId = habitId, dateEpochDay = epochDay, status = HabitMarkStatus.DONE))
+          }
+        } else {
+          habitDao.deleteMark(habitId, epochDay)
+        }
+      }
+    }
+    if (newMarks.isNotEmpty()) {
+      habitDao.insertMarks(newMarks)
     }
   }
 
@@ -182,7 +216,16 @@ class BlocoRepository(
 
     val deviceCalendars = helper?.fetchDeviceCalendars() ?: emptyList()
     if (deviceCalendars.isNotEmpty()) {
-      calendarDao.insertCalendars(deviceCalendars)
+      val existingCalendars = calendars.first().associateBy { it.id }
+      val mergedCalendars = deviceCalendars.map { devCal ->
+        val existing = existingCalendars[devCal.id]
+        if (existing != null) {
+          devCal.copy(isSelected = existing.isSelected)
+        } else {
+          devCal.copy(isSelected = true)
+        }
+      }
+      calendarDao.insertCalendars(mergedCalendars)
     } else {
       val existing = calendars.first()
       if (existing.isEmpty()) {

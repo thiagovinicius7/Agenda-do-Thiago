@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,10 +37,12 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.GridCellState
 import com.example.data.model.Habit
 import com.example.data.model.HabitCalculationResult
+import com.example.data.model.HabitGridCell
 import com.example.data.model.RepeatType
 import com.example.ui.components.HabitGrid
 import com.example.ui.components.HabitGridMode
 import com.example.ui.components.ModernistButton
+import com.example.ui.components.ModernistCheckbox
 import com.example.ui.components.ModernistSwitch
 import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
@@ -150,7 +153,6 @@ fun HabitsListScreen(
             )
           }
 
-          // Badge (e.g. d62 or 2/3 or d4)
           val badgeText = when (habit.id) {
             "h_corrida" -> "d${habitRes.currentDayNumber}"
             "h_leitura" -> "d${habitRes.currentStreak}"
@@ -266,6 +268,10 @@ fun HabitDetailScreen(
   habitRes: HabitCalculationResult?,
   onBack: () -> Unit,
   onToggleToday: () -> Unit,
+  onToggleCell: (Long) -> Unit = {},
+  onMarkPastDays: (fromEpoch: Long, toEpoch: Long, markDone: Boolean) -> Unit = { _, _, _ -> },
+  onUpdateReminder: (String) -> Unit = {},
+  onTestNotification: (String) -> Unit = {},
   onEditRule: () -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -275,7 +281,15 @@ fun HabitDetailScreen(
 
   val habit = habitRes.habit
   var pauseWithoutStreakLoss by remember { mutableStateOf(false) }
-  var reminderActive by remember { mutableStateOf(habit.reminderEnabled) }
+  var reminderActive by remember { mutableStateOf(habit.reminderEnabled && habit.reminderTime != "Desativado") }
+  var chosenReminderTime by remember { mutableStateOf(habit.reminderTime.ifBlank { "08:00" }) }
+  var reminderSavedMessage by remember { mutableStateOf<String?>(null) }
+
+  val todayEpoch = HabitCalculations.todayEpochDay()
+  val ptBr = remember { Locale("pt", "BR") }
+  val shortFmt = remember { DateTimeFormatter.ofPattern("d 'de' MMMM", ptBr) }
+
+  val pastRuleCells: List<HabitGridCell> = habitRes.gridCells.filter { it.dateEpochDay <= todayEpoch && it.state != GridCellState.OUTSIDE_RULE }
 
   Column(
     modifier = modifier
@@ -330,8 +344,13 @@ fun HabitDetailScreen(
           color = colors.text
         )
         Spacer(modifier = Modifier.height(8.dp))
+        val subtitle = if (habit.durationDays > 0) {
+          "TODOS OS DIAS MENOS DOMINGO · ${habit.durationDays} DIAS"
+        } else {
+          "DIÁRIO · SEM FIM"
+        }
         Text(
-          text = "TODOS OS DIAS MENOS DOMINGO · ${habit.durationDays} DIAS",
+          text = subtitle,
           style = SectionLabelStyle,
           color = colors.accentDark
         )
@@ -345,7 +364,6 @@ fun HabitDetailScreen(
           .fillMaxWidth()
           .height(72.dp)
       ) {
-        // Day count
         Column(
           modifier = Modifier
             .weight(1f)
@@ -353,11 +371,10 @@ fun HabitDetailScreen(
         ) {
           Text(text = "d${habitRes.currentDayNumber}", style = BigStatStyle, color = colors.text)
           Spacer(modifier = Modifier.height(4.dp))
-          Text(text = "DE ${habitRes.totalDays}", style = SectionLabelStyle, color = colors.textTertiary)
+          Text(text = if (habitRes.totalDays > 0) "DE ${habitRes.totalDays}" else "DIAS", style = SectionLabelStyle, color = colors.textTertiary)
         }
         Box(modifier = Modifier.width(1.dp).fillMaxSize().background(colors.rulerWeak))
 
-        // Streak
         Column(
           modifier = Modifier
             .weight(1f)
@@ -369,7 +386,6 @@ fun HabitDetailScreen(
         }
         Box(modifier = Modifier.width(1.dp).fillMaxSize().background(colors.rulerWeak))
 
-        // Consistency %
         Column(
           modifier = Modifier
             .weight(1f)
@@ -392,12 +408,12 @@ fun HabitDetailScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "ABR — SET · UM QUADRADO POR DIA",
+          text = "GRADE DE DIAS (TOQUE PARA MARCAR/DESMARCAR)",
           style = SectionLabelStyle,
           color = colors.textTertiary
         )
         Text(
-          text = "d1 → d${habitRes.totalDays}",
+          text = "d1 → d${habitRes.totalDays.coerceAtLeast(habitRes.currentDayNumber)}",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.SemiBold,
           fontSize = 10.sp,
@@ -405,11 +421,12 @@ fun HabitDetailScreen(
         )
       }
 
-      // 12-Column Numbered Grid
+      // 12-Column Numbered Grid with Click on ANY day
       Box(modifier = Modifier.padding(horizontal = 16.dp)) {
         HabitGrid(
           cells = habitRes.gridCells,
-          mode = HabitGridMode.DETAIL
+          mode = HabitGridMode.DETAIL,
+          onCellClick = { cell -> onToggleCell(cell.dateEpochDay) }
         )
       }
 
@@ -443,64 +460,318 @@ fun HabitDetailScreen(
 
       Spacer(modifier = Modifier.height(16.dp))
       Ruler2dp()
-      Spacer(modifier = Modifier.height(12.dp))
 
-      // Switch 1: Pause without losing streak
-      Row(
+      // Histórico de Dias Anteriores & Ações em Massa
+      Column(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+          .padding(horizontal = 16.dp, vertical = 14.dp)
       ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
           Text(
-            text = "Pausar sem perder a sequência",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 13.sp,
-            color = colors.text
+            text = "MARCAR DIAS ANTERIORES",
+            style = SectionLabelStyle,
+            color = colors.textTertiary
           )
-          Spacer(modifier = Modifier.height(4.dp))
-          Text(
-            text = "Dias pausados não contam como falha.",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.Normal,
-            fontSize = 10.5.sp,
-            color = colors.textSecondary
-          )
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+              modifier = Modifier
+                .background(colors.accent)
+                .clickable {
+                  onMarkPastDays(habit.startDateEpochDay, todayEpoch, true)
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = "✓ Marcar todos até hoje",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = Color.White
+              )
+            }
+            Box(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable {
+                  onMarkPastDays(habit.startDateEpochDay, todayEpoch, false)
+                }
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+              Text(
+                text = "✕ Desmarcar todos",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = colors.text
+              )
+            }
+          }
         }
-        ModernistSwitch(
-          checked = pauseWithoutStreakLoss,
-          onCheckedChange = { pauseWithoutStreakLoss = it }
+
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+          text = "Toque em qualquer dia anterior abaixo ou na grade acima para marcar como concluído:",
+          fontFamily = ArchivoFont,
+          fontSize = 11.sp,
+          color = colors.textSecondary
         )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .background(colors.canvas)
+        ) {
+          val recentPast = pastRuleCells.takeLast(14).reversed()
+          recentPast.forEachIndexed { index, cell ->
+            val date = LocalDate.ofEpochDay(cell.dateEpochDay)
+            val isDone = cell.state == GridCellState.DONE
+            val dateLabel = if (cell.dateEpochDay == todayEpoch) {
+              "Hoje (${date.format(shortFmt)})"
+            } else if (cell.dateEpochDay == todayEpoch - 1) {
+              "Ontem (${date.format(shortFmt)})"
+            } else {
+              date.format(shortFmt)
+            }
+
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggleCell(cell.dateEpochDay) }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+              ) {
+                ModernistCheckbox(
+                  checked = isDone,
+                  onCheckedChange = { onToggleCell(cell.dateEpochDay) },
+                  size = 18.dp
+                )
+                Text(
+                  text = "d${cell.dayNumber} · $dateLabel",
+                  fontFamily = ArchivoFont,
+                  fontWeight = if (isDone) FontWeight.Bold else FontWeight.Normal,
+                  fontSize = 12.sp,
+                  color = if (isDone) colors.text else colors.textSecondary
+                )
+              }
+              Text(
+                text = if (isDone) "Concluído" else "Não realizado",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 10.sp,
+                color = if (isDone) colors.accentDark else colors.textTertiary
+              )
+            }
+            if (index < recentPast.lastIndex) {
+              Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.rulerWeak))
+            }
+          }
+        }
       }
 
-      // Switch 2: Reminder
-      Row(
+      Ruler2dp()
+
+      // Seção de Notificação e Escolha de Horário
+      Column(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+          .padding(horizontal = 16.dp, vertical = 14.dp)
       ) {
         Text(
-          text = "Lembrete ${habit.reminderTime}",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.ExtraBold,
-          fontSize = 13.sp,
-          color = colors.text
+          text = "NOTIFICAÇÃO E HORÁRIO DO LEMBRETE",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
         )
-        ModernistSwitch(
-          checked = reminderActive,
-          onCheckedChange = { reminderActive = it }
-        )
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = "Notificar no celular",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 13.sp,
+              color = colors.text
+            )
+            Text(
+              text = "Dispara alarme sonoro e aviso diário no horário selecionado.",
+              fontFamily = ArchivoFont,
+              fontSize = 10.5.sp,
+              color = colors.textSecondary
+            )
+          }
+          ModernistSwitch(
+            checked = reminderActive,
+            onCheckedChange = {
+              reminderActive = it
+              val newTime = if (it) chosenReminderTime else "Desativado"
+              onUpdateReminder(newTime)
+              reminderSavedMessage = if (it) "Lembrete ativado para às $chosenReminderTime" else "Lembrete desativado"
+            }
+          )
+        }
+
+        if (reminderActive) {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(
+            text = "ESCOLHA O HORÁRIO DA NOTIFICAÇÃO:",
+            style = SectionLabelStyle,
+            color = colors.textTertiary,
+            fontSize = 9.sp
+          )
+          Spacer(modifier = Modifier.height(8.dp))
+
+          // Horários predefinidos
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            listOf("06:30", "07:00", "08:00", "09:00", "12:00", "15:00", "18:00", "19:30", "20:00", "21:30").forEach { time ->
+              val isSel = (chosenReminderTime == time)
+              Box(
+                modifier = Modifier
+                  .background(if (isSel) colors.text else Color.Transparent)
+                  .border(1.dp, if (isSel) colors.text else colors.rulerWeak, RectangleShape)
+                  .clickable {
+                    chosenReminderTime = time
+                    onUpdateReminder(time)
+                    reminderSavedMessage = "Horário atualizado para às $time"
+                  }
+                  .padding(horizontal = 10.dp, vertical = 6.dp)
+              ) {
+                Text(
+                  text = time,
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp,
+                  color = if (isSel) colors.canvas else colors.text
+                )
+              }
+            }
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          // Ajuste fino do horário (-15 min / +15 min)
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .padding(8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Box(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable {
+                  val newT = adjustMinutes(chosenReminderTime, -15)
+                  chosenReminderTime = newT
+                  onUpdateReminder(newT)
+                  reminderSavedMessage = "Horário ajustado para às $newT"
+                }
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+              Text(
+                text = "◀ -15 min",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = colors.text
+              )
+            }
+
+            Text(
+              text = "⏰ $chosenReminderTime",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 16.sp,
+              color = colors.text
+            )
+
+            Box(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable {
+                  val newT = adjustMinutes(chosenReminderTime, +15)
+                  chosenReminderTime = newT
+                  onUpdateReminder(newT)
+                  reminderSavedMessage = "Horário ajustado para às $newT"
+                }
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+              Text(
+                text = "+15 min ▶",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = colors.text
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(10.dp))
+
+          // Botão de testar notificação no celular
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .weight(1f)
+                .background(colors.accent)
+                .clickable {
+                  onTestNotification(habit.name)
+                  reminderSavedMessage = "Notificação de teste enviada para o celular!"
+                }
+                .padding(vertical = 10.dp),
+              contentAlignment = Alignment.Center
+            ) {
+              Text(
+                text = "🔔 Testar Notificação Agora",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = Color.White
+              )
+            }
+          }
+
+          if (reminderSavedMessage != null) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+              text = "✓ $reminderSavedMessage",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 10.5.sp,
+              color = colors.accentDark
+            )
+          }
+        }
       }
 
       Spacer(modifier = Modifier.height(20.dp))
     }
 
-    // Bottom action row: "Marcar d62" + "Editar regra"
+    // Bottom action row: "Marcar hoje" + "Editar regra"
     Ruler2dp()
     Row(
       modifier = Modifier
@@ -517,7 +788,7 @@ fun HabitDetailScreen(
         contentAlignment = Alignment.CenterStart
       ) {
         Text(
-          text = if (habitRes.isDoneToday) "Desmarcar d${habitRes.currentDayNumber}" else "Marcar d${habitRes.currentDayNumber}",
+          text = if (habitRes.isDoneToday) "Desmarcar d${habitRes.currentDayNumber} (Hoje)" else "Marcar d${habitRes.currentDayNumber} (Hoje)",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 13.sp,
@@ -547,7 +818,8 @@ fun HabitDetailScreen(
 @Composable
 fun HabitCreateScreen(
   onBack: () -> Unit,
-  onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean, startDateEpochDay: Long) -> Unit,
+  onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean, startDateEpochDay: Long, markPastDays: Boolean) -> Unit,
+  onTestNotification: (String) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -559,15 +831,19 @@ fun HabitCreateScreen(
   var durationDays by remember { mutableIntStateOf(150) }
   val today = remember { LocalDate.now() }
   var startDate by remember { mutableStateOf(today) }
+  var markPastDaysAsDone by remember { mutableStateOf(false) }
   var showInCalendar by remember { mutableStateOf(true) }
   var pauseAllowed by remember { mutableStateOf(false) }
-  var reminderTime by remember { mutableStateOf("06:30") }
+  var reminderEnabled by remember { mutableStateOf(true) }
+  var reminderTime by remember { mutableStateOf("08:00") }
+  var testNotificationSent by remember { mutableStateOf(false) }
 
   val ptBr = remember { Locale("pt", "BR") }
   val dateDisplayFmt = remember { DateTimeFormatter.ofPattern("d 'de' MMMM", ptBr) }
   val shortFmt = remember { DateTimeFormatter.ofPattern("d MMM", ptBr) }
 
-  // Synthetic calculated preview for creation
+  val isStartInPast = startDate.isBefore(today)
+
   val dummyHabit = Habit(
     id = "new",
     name = name,
@@ -577,7 +853,7 @@ fun HabitCreateScreen(
     startDateEpochDay = startDate.toEpochDay()
   )
   val previewCalc = remember(name, repeatType, selectedDays, durationDays, startDate) {
-    HabitCalculations.calculate(dummyHabit, emptyList(), currentEpochDay = startDate.toEpochDay())
+    HabitCalculations.calculate(dummyHabit, emptyList(), currentEpochDay = today.toEpochDay())
   }
 
   Column(
@@ -638,29 +914,23 @@ fun HabitCreateScreen(
 
       Spacer(modifier = Modifier.height(22.dp))
 
-      // 2. Data de Início (START DATE)
+      // 2. Data de Início (START DATE & RETROACTIVE START)
       Text(text = "DATA DE INÍCIO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(8.dp))
+
+      // Quick choice chips for start date (including past dates)
       Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
       ) {
-        DurationChip(
-          label = "Hoje (${today.format(shortFmt)})",
-          isSelected = startDate == today
-        ) { startDate = today }
-
-        val tomorrow = today.plusDays(1)
-        DurationChip(
-          label = "Amanhã (${tomorrow.format(shortFmt)})",
-          isSelected = startDate == tomorrow
-        ) { startDate = tomorrow }
-
-        val nextMonday = today.plusDays(((8 - today.dayOfWeek.value) % 7).toLong().let { if (it == 0L) 7L else it })
-        DurationChip(
-          label = "Seg (${nextMonday.format(shortFmt)})",
-          isSelected = startDate == nextMonday
-        ) { startDate = nextMonday }
+        DurationChip("Hoje (${today.format(shortFmt)})", isSelected = startDate == today) { startDate = today }
+        DurationChip("Ontem (-1d)", isSelected = startDate == today.minusDays(1)) { startDate = today.minusDays(1) }
+        DurationChip("-3 dias", isSelected = startDate == today.minusDays(3)) { startDate = today.minusDays(3) }
+        DurationChip("-7 dias", isSelected = startDate == today.minusDays(7)) { startDate = today.minusDays(7) }
+        DurationChip("-14 dias", isSelected = startDate == today.minusDays(14)) { startDate = today.minusDays(14) }
+        DurationChip("-30 dias", isSelected = startDate == today.minusDays(30)) { startDate = today.minusDays(30) }
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -691,8 +961,15 @@ fun HabitCreateScreen(
             fontSize = 13.sp,
             color = colors.text
           )
+          val diffDays = today.toEpochDay() - startDate.toEpochDay()
+          val subtitle = when {
+            diffDays == 0L -> "Inicia Hoje"
+            diffDays == 1L -> "Iniciou Ontem (1 dia atrás)"
+            diffDays > 1L -> "Iniciou há $diffDays dias atrás"
+            else -> "Início futuro"
+          }
           Text(
-            text = if (startDate == today) "Hoje" else if (startDate == today.plusDays(1)) "Amanhã" else "Início escolhido",
+            text = subtitle,
             fontFamily = ArchivoFont,
             fontSize = 10.sp,
             color = colors.accentDark
@@ -709,13 +986,47 @@ fun HabitCreateScreen(
         }
       }
 
+      // If started in the past, offer auto-marking
+      if (isStartInPast) {
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.accent.copy(alpha = 0.08f))
+            .border(1.dp, colors.accent, RectangleShape)
+            .padding(10.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = "Marcar dias anteriores como concluídos",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 12.sp,
+              color = colors.text
+            )
+            Text(
+              text = "Preenche automaticamente os dias desde o início até ontem.",
+              fontFamily = ArchivoFont,
+              fontSize = 10.sp,
+              color = colors.textSecondary
+            )
+          }
+          ModernistCheckbox(
+            checked = markPastDaysAsDone,
+            onCheckedChange = { markPastDaysAsDone = !markPastDaysAsDone },
+            size = 20.dp
+          )
+        }
+      }
+
       Spacer(modifier = Modifier.height(22.dp))
 
       // 3. Repetition Rule
       Text(text = "REPETIÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(8.dp))
 
-      // 2-Column Repetition Matrix
       Column(
         modifier = Modifier
           .fillMaxWidth()
@@ -808,24 +1119,124 @@ fun HabitCreateScreen(
         mode = HabitGridMode.PREVIEW
       )
 
-      Spacer(modifier = Modifier.height(8.dp))
-      Text(
-        text = "${previewCalc.plannedMarksCount} marcações previstas · ${previewCalc.excludedDaysCount} domingos fora da regra.",
-        fontFamily = ArchivoFont,
-        fontWeight = FontWeight.Normal,
-        fontSize = 11.sp,
-        color = colors.textSecondary
-      )
-
       Spacer(modifier = Modifier.height(20.dp))
       Ruler2dp()
+      Spacer(modifier = Modifier.height(14.dp))
+
+      // 5. Notificação e Escolha de Horário
+      Text(text = "NOTIFICAÇÃO E HORÁRIO NO CELULAR", style = SectionLabelStyle, color = colors.textTertiary)
+      Spacer(modifier = Modifier.height(8.dp))
+
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(text = "Notificar no celular", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(text = "Avisa no horário programado para você não esquecer.", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
+        }
+        ModernistSwitch(checked = reminderEnabled, onCheckedChange = { reminderEnabled = it })
+      }
+
+      if (reminderEnabled) {
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          listOf("06:30", "07:00", "08:00", "09:00", "12:00", "15:00", "18:00", "19:30", "20:00", "21:30").forEach { time ->
+            val isSel = (reminderTime == time)
+            Box(
+              modifier = Modifier
+                .background(if (isSel) colors.text else Color.Transparent)
+                .border(1.dp, if (isSel) colors.text else colors.rulerWeak, RectangleShape)
+                .clickable { reminderTime = time }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(
+                text = time,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = if (isSel) colors.canvas else colors.text
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Fine adjustment for reminder time
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .padding(8.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Box(
+            modifier = Modifier
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable { reminderTime = adjustMinutes(reminderTime, -15) }
+              .padding(horizontal = 8.dp, vertical = 6.dp)
+          ) {
+            Text(text = "◀ -15 min", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+          }
+
+          Text(
+            text = "⏰ $reminderTime",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.sp,
+            color = colors.text
+          )
+
+          Box(
+            modifier = Modifier
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable { reminderTime = adjustMinutes(reminderTime, +15) }
+              .padding(horizontal = 8.dp, vertical = 6.dp)
+          ) {
+            Text(text = "+15 min ▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+          }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              onTestNotification(name)
+              testNotificationSent = true
+            }
+            .padding(vertical = 8.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = if (testNotificationSent) "✓ Notificação de teste disparada!" else "🔔 Testar Notificação Agora",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = if (testNotificationSent) colors.accentDark else colors.text
+          )
+        }
+      }
+
       Spacer(modifier = Modifier.height(14.dp))
 
       // Toggle: Mostrar na agenda
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(vertical = 8.dp),
+          .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
@@ -834,36 +1245,6 @@ fun HabitCreateScreen(
           Text(text = "Aparece às $reminderTime nos dias da regra.", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
         }
         ModernistSwitch(checked = showInCalendar, onCheckedChange = { showInCalendar = it })
-      }
-
-      // Toggle: Pausa não quebra sequência
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text(text = "Pausa não quebra a sequência", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        ModernistSwitch(checked = pauseAllowed, onCheckedChange = { pauseAllowed = it })
-      }
-
-      // Reminder button
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text(text = "Lembrete", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        Box(
-          modifier = Modifier
-            .border(1.dp, colors.rulerStrong, RectangleShape)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-          Text(text = reminderTime, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text)
-        }
       }
     }
 
@@ -876,7 +1257,17 @@ fun HabitCreateScreen(
       ModernistButton(
         text = "Criar hábito",
         onClick = {
-          onSaveHabit(name, repeatType, selectedDays.joinToString(","), durationDays, reminderTime, showInCalendar, startDate.toEpochDay())
+          val finalReminder = if (reminderEnabled) reminderTime else "Desativado"
+          onSaveHabit(
+            name,
+            repeatType,
+            selectedDays.joinToString(","),
+            durationDays,
+            finalReminder,
+            showInCalendar,
+            startDate.toEpochDay(),
+            markPastDaysAsDone
+          )
         },
         modifier = Modifier.fillMaxWidth()
       )
@@ -901,7 +1292,6 @@ fun HabitConcludedScreen(
     startDateEpochDay = HabitCalculations.todayEpochDay() - 150
   )
   val concludedCalc = remember {
-    // Generate full done set
     val marks = (0..150).filter { it % 11 != 7 }.map {
       com.example.data.model.HabitMark("done", HabitCalculations.todayEpochDay() - 150 + it)
     }
@@ -1158,4 +1548,14 @@ private fun DurationChip(label: String, isSelected: Boolean, onClick: () -> Unit
       color = textColor
     )
   }
+}
+
+private fun adjustMinutes(timeStr: String, deltaMinutes: Int): String {
+  val parts = timeStr.split(":").mapNotNull { it.trim().toIntOrNull() }
+  val hour = parts.getOrNull(0) ?: 8
+  val minute = parts.getOrNull(1) ?: 0
+  val totalMins = (hour * 60 + minute + deltaMinutes + 1440) % 1440
+  val newHour = totalMins / 60
+  val newMin = totalMins % 60
+  return String.format(Locale.ROOT, "%02d:%02d", newHour, newMin)
 }

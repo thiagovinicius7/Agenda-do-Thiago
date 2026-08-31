@@ -1,5 +1,6 @@
 package com.example.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.CalendarEvent
@@ -14,12 +15,14 @@ import com.example.data.model.NoteWithItems
 import com.example.data.model.RepeatType
 import com.example.data.model.SyncQueueItem
 import com.example.data.repository.BlocoRepository
+import com.example.notification.HabitNotificationScheduler
 import com.example.util.HabitCalculations
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -66,6 +69,7 @@ data class BlocoUiState(
   val isDarkTheme: Boolean = false,
   val selectedNoteId: String? = null,
   val selectedHabitId: String? = "h_corrida",
+  val selectedHojeDate: LocalDate = LocalDate.now(),
   val selectedCalendarDate: LocalDate = LocalDate.now(),
   val calendarViewMode: CalendarViewMode = CalendarViewMode.MES,
   val muralCategoryFilter: String = "todos",
@@ -148,6 +152,10 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     _uiState.value = _uiState.value.copy(calendarViewMode = mode)
   }
 
+  fun selectHojeDate(date: LocalDate) {
+    _uiState.value = _uiState.value.copy(selectedHojeDate = date)
+  }
+
   fun selectCalendarDate(date: LocalDate) {
     _uiState.value = _uiState.value.copy(selectedCalendarDate = date)
   }
@@ -169,6 +177,12 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
   fun toggleHabitDay(habitId: String, dateEpochDay: Long = HabitCalculations.todayEpochDay()) {
     viewModelScope.launch {
       repository.toggleHabitDay(habitId, dateEpochDay)
+    }
+  }
+
+  fun markPastHabitDays(habitId: String, fromEpochDay: Long, toEpochDay: Long, markAsDone: Boolean = true) {
+    viewModelScope.launch {
+      repository.markPastHabitDays(habitId, fromEpochDay, toEpochDay, markAsDone)
     }
   }
 
@@ -217,12 +231,16 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     durationDays: Int,
     reminderTime: String,
     showInCalendar: Boolean,
-    startDateEpochDay: Long = HabitCalculations.todayEpochDay()
+    startDateEpochDay: Long = HabitCalculations.todayEpochDay(),
+    markPastDaysAsDone: Boolean = false,
+    context: Context? = null
   ) {
     viewModelScope.launch {
+      val habitId = "habit_${System.currentTimeMillis()}"
+      val habitName = name.ifBlank { "Novo hábito" }
       val habit = Habit(
-        id = "habit_${System.currentTimeMillis()}",
-        name = name.ifBlank { "Novo hábito" },
+        id = habitId,
+        name = habitName,
         repeatType = repeatType,
         repeatDays = repeatDays,
         durationDays = durationDays,
@@ -231,8 +249,49 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
         showInCalendar = showInCalendar
       )
       repository.insertHabit(habit)
+
+      // If user selected a start date in the past and opted to mark past days as done
+      val todayEpoch = HabitCalculations.todayEpochDay()
+      if (markPastDaysAsDone && startDateEpochDay < todayEpoch) {
+        repository.markPastHabitDays(habitId, startDateEpochDay, todayEpoch - 1, true)
+      }
+
+      // Schedule notification alarm if reminder is set and context is provided
+      if (context != null && reminderTime.isNotBlank() && reminderTime != "Desativado") {
+        HabitNotificationScheduler.scheduleHabitReminder(
+          context = context,
+          habitId = habitId,
+          habitName = habitName,
+          reminderTime = reminderTime
+        )
+      }
+
       closeOverlay()
     }
+  }
+
+  fun updateHabitReminder(
+    context: Context,
+    habitId: String,
+    habitName: String,
+    newReminderTime: String
+  ) {
+    viewModelScope.launch {
+      val habits = repository.activeHabits.first()
+      val habit = habits.find { it.id == habitId } ?: return@launch
+      val updated = habit.copy(reminderTime = newReminderTime)
+      repository.updateHabit(updated)
+
+      if (newReminderTime.isNotBlank() && newReminderTime != "Desativado") {
+        HabitNotificationScheduler.scheduleHabitReminder(context, habitId, habitName, newReminderTime)
+      } else {
+        HabitNotificationScheduler.cancelHabitReminder(context, habitId)
+      }
+    }
+  }
+
+  fun testNotification(context: Context, habitName: String) {
+    HabitNotificationScheduler.sendTestNotificationNow(context, habitName)
   }
 
   fun saveEvent(
