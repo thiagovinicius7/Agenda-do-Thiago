@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Agenda do Thiago"
+rootProject.name = "Bloco T"
 
 include(":app")

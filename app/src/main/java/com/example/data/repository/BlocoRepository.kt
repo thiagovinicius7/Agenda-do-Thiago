@@ -178,6 +178,15 @@ class BlocoRepository(
     }
   }
 
+  suspend fun updateEvent(event: CalendarEvent) {
+    calendarDao.updateEvent(event)
+  }
+
+  suspend fun deleteEvent(eventId: String) {
+    calendarDao.deleteEvent(eventId)
+    syncQueueDao.deleteQueueItem("sync_$eventId")
+  }
+
   suspend fun updateCalendarSelection(calendarId: String, isSelected: Boolean) {
     val currentCalendars = calendars.first()
     val cal = currentCalendars.find { it.id == calendarId } ?: return
@@ -188,6 +197,14 @@ class BlocoRepository(
     val currentCalendars = calendars.first()
     val cal = currentCalendars.find { it.id == calendarId } ?: return
     calendarDao.updateCalendar(cal.copy(isSelected = !cal.isSelected))
+  }
+
+  suspend fun toggleAccountSelection(accountEmail: String, isSelected: Boolean) {
+    val currentCalendars = calendars.first()
+    val updated = currentCalendars.map {
+      if (it.accountEmail == accountEmail) it.copy(isSelected = isSelected) else it
+    }
+    calendarDao.insertCalendars(updated)
   }
 
   suspend fun selectAllCalendars(isSelected: Boolean) {
@@ -214,6 +231,9 @@ class BlocoRepository(
     val email = userEmail ?: "thiagovinicius7@gmail.com"
     val helper = calendarSyncHelper
 
+    // Purge any older mock events
+    calendarDao.deleteMockEvents()
+
     val deviceCalendars = helper?.fetchDeviceCalendars() ?: emptyList()
     if (deviceCalendars.isNotEmpty()) {
       val existingCalendars = calendars.first().associateBy { it.id }
@@ -233,34 +253,10 @@ class BlocoRepository(
           listOf(
             GoogleCalendar(
               id = "cal_pessoal",
-              name = "Pessoal",
+              name = "Minha Agenda",
               accountEmail = email,
               colorHex = "#EC3013",
               isPrimary = true,
-              isSelected = true
-            ),
-            GoogleCalendar(
-              id = "cal_trabalho",
-              name = "Trabalho",
-              accountEmail = email,
-              colorHex = "#201E1D",
-              isPrimary = false,
-              isSelected = true
-            ),
-            GoogleCalendar(
-              id = "cal_faculdade",
-              name = "Faculdade / Cursos",
-              accountEmail = email,
-              colorHex = "#3277DB",
-              isPrimary = false,
-              isSelected = true
-            ),
-            GoogleCalendar(
-              id = "cal_feriados",
-              name = "Feriados no Brasil",
-              accountEmail = "pt.brazilian#holiday@group.v.calendar.google.com",
-              colorHex = "#529E72",
-              isPrimary = false,
               isSelected = true
             )
           )
@@ -273,201 +269,15 @@ class BlocoRepository(
       calendarDao.insertEvents(deviceEvents)
       return deviceEvents.size
     } else {
-      seedDynamicGoogleEvents(email)
       return events.first().size
     }
   }
 
-  suspend fun seedDynamicGoogleEvents(email: String = "thiagovinicius7@gmail.com") {
-    val today = LocalDate.now()
-    val zone = java.time.ZoneId.systemDefault()
-
-    fun epochOf(date: LocalDate, hour: Int, minute: Int): Long {
-      return date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
-    }
-
-    val sampleEvents = mutableListOf<CalendarEvent>()
-
-    // Today's events
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_today_1",
-        calendarId = "cal_trabalho",
-        title = "Reunião de alinhamento e planejamento",
-        startEpochMillis = epochOf(today, 9, 0),
-        endEpochMillis = epochOf(today, 10, 0),
-        isAllDay = false,
-        location = "Google Meet",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_today_2",
-        calendarId = "cal_trabalho",
-        title = "Revisão de propostas e entregas",
-        startEpochMillis = epochOf(today, 14, 30),
-        endEpochMillis = epochOf(today, 15, 30),
-        isAllDay = false,
-        location = "Sala de reuniões",
-        attachedNoteTitle = "Proposta comercial",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_today_3",
-        calendarId = "cal_pessoal",
-        title = "Treino e corrida no parque",
-        startEpochMillis = epochOf(today, 18, 0),
-        endEpochMillis = epochOf(today, 19, 0),
-        isAllDay = false,
-        location = "Parque",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // Tomorrow (+1)
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d1_1",
-        calendarId = "cal_trabalho",
-        title = "Apresentação de resultados e métricas",
-        startEpochMillis = epochOf(today.plusDays(1), 10, 30),
-        endEpochMillis = epochOf(today.plusDays(1), 11, 30),
-        isAllDay = false,
-        location = "Google Meet",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d1_2",
-        calendarId = "cal_pessoal",
-        title = "Dentista — consulta de rotina",
-        startEpochMillis = epochOf(today.plusDays(1), 16, 0),
-        endEpochMillis = epochOf(today.plusDays(1), 17, 0),
-        isAllDay = false,
-        location = "Centro Clínico",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +2 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d2_1",
-        calendarId = "cal_faculdade",
-        title = "Aula Magna e Seminário Integrador",
-        startEpochMillis = epochOf(today.plusDays(2), 19, 0),
-        endEpochMillis = epochOf(today.plusDays(2), 21, 30),
-        isAllDay = false,
-        location = "Auditório Central",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +3 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d3_1",
-        calendarId = "cal_trabalho",
-        title = "Sprint Review e Retrospectiva",
-        startEpochMillis = epochOf(today.plusDays(3), 15, 0),
-        endEpochMillis = epochOf(today.plusDays(3), 16, 30),
-        isAllDay = false,
-        location = "Google Meet",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +5 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d5_1",
-        calendarId = "cal_pessoal",
-        title = "Almoço de família e aniversário",
-        startEpochMillis = epochOf(today.plusDays(5), 12, 30),
-        endEpochMillis = epochOf(today.plusDays(5), 15, 0),
-        isAllDay = false,
-        location = "Restaurante",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +7 days (Independência do Brasil / Feriado)
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_holiday_1",
-        calendarId = "cal_feriados",
-        title = "Independência do Brasil",
-        startEpochMillis = epochOf(today.plusDays(7), 8, 0),
-        endEpochMillis = epochOf(today.plusDays(7), 18, 0),
-        isAllDay = true,
-        location = "Brasil",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +10 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d10_1",
-        calendarId = "cal_trabalho",
-        title = "Workshop de Design System e Arquitetura",
-        startEpochMillis = epochOf(today.plusDays(10), 14, 0),
-        endEpochMillis = epochOf(today.plusDays(10), 16, 0),
-        isAllDay = false,
-        location = "Google Meet",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +14 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d14_1",
-        calendarId = "cal_pessoal",
-        title = "Consulta médica e exames periódicos",
-        startEpochMillis = epochOf(today.plusDays(14), 8, 30),
-        endEpochMillis = epochOf(today.plusDays(14), 10, 0),
-        isAllDay = false,
-        location = "Hospital Santa Clara",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    // +20 days
-    sampleEvents.add(
-      CalendarEvent(
-        id = "gcal_d20_1",
-        calendarId = "cal_faculdade",
-        title = "Entrega final de Artigo e Projeto",
-        startEpochMillis = epochOf(today.plusDays(20), 23, 59),
-        endEpochMillis = epochOf(today.plusDays(20), 23, 59),
-        isAllDay = true,
-        location = "Portal Acadêmico",
-        isLocalOnly = false,
-        isPendingSync = false
-      )
-    )
-
-    calendarDao.insertEvents(sampleEvents)
-  }
-
-  // Initial categories setup without fake mock data
+  // Initial categories setup and cleanup of mock data
   suspend fun seedInitialDataIfEmpty() {
+    // Always purge previous mock events
+    calendarDao.deleteMockEvents()
+
     val existingCats = categories.first()
     if (existingCats.isEmpty()) {
       val defaultCategories = listOf(

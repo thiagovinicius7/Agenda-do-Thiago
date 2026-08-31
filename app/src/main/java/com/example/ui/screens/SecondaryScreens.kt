@@ -205,6 +205,7 @@ fun SettingsScreen(
   onBack: () -> Unit,
   calendars: List<GoogleCalendar> = emptyList(),
   onToggleCalendar: ((String) -> Unit)? = null,
+  onToggleAccount: ((String, Boolean) -> Unit)? = null,
   onSelectAllCalendars: ((Boolean) -> Unit)? = null,
   onClearData: (() -> Unit)? = null,
   onSyncCalendar: (() -> Unit)? = null,
@@ -755,14 +756,16 @@ fun SettingsScreen(
     }
   }
 
-  // 3. Calendars Dialog
+  // 3. Calendars Dialog with Account Grouping
   if (showCalendarsDialog) {
+    val calendarsByAccount = displayCalendars.groupBy { it.accountEmail }
+
     ModernistSimpleDialog(
-      title = "CALENDÁRIOS DO GOOGLE",
+      title = "CONTAS E CALENDÁRIOS",
       onDismiss = { showCalendarsDialog = false }
     ) {
       Text(
-        text = "Selecione quais calendários da sua conta Google exibir na Agenda:",
+        text = "Selecione quais contas e calendários exibir na Agenda do app:",
         fontFamily = ArchivoFont,
         fontSize = 11.5.sp,
         color = colors.textSecondary
@@ -809,67 +812,108 @@ fun SettingsScreen(
         }
       }
 
-      Spacer(modifier = Modifier.height(10.dp))
+      Spacer(modifier = Modifier.height(12.dp))
 
-      // Scrollable list of calendars with explicit max height
+      // Grouped by Google Account with account toggle
       Column(
         modifier = Modifier
           .fillMaxWidth()
-          .heightIn(max = 280.dp)
+          .heightIn(max = 320.dp)
           .verticalScroll(rememberScrollState())
-          .border(1.dp, colors.rulerStrong, RectangleShape)
       ) {
-        displayCalendars.forEachIndexed { idx, cal ->
-          val calColor = try {
-            Color(android.graphics.Color.parseColor(cal.colorHex))
-          } catch (e: Exception) {
-            colors.accent
-          }
-          Row(
+        calendarsByAccount.forEach { (accountEmail, accountCals) ->
+          val allSelected = accountCals.all { it.isSelected }
+          val someSelected = accountCals.any { it.isSelected }
+
+          Column(
             modifier = Modifier
               .fillMaxWidth()
-              .clickable {
-                onToggleCalendar?.invoke(cal.id)
-              }
-              .background(if (cal.isSelected) colors.accent.copy(alpha = 0.05f) else Color.Transparent)
-              .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .background(colors.canvas)
           ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-              Box(modifier = Modifier.size(10.dp).background(calColor))
-              Spacer(modifier = Modifier.width(10.dp))
-              Column {
-                Text(
-                  text = cal.name,
-                  fontFamily = ArchivoFont,
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 13.sp,
-                  color = colors.text
+            // Account Header Row
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .background(colors.track)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(
+                  modifier = Modifier
+                    .size(8.dp)
+                    .background(if (someSelected) colors.accent else colors.textTertiary)
                 )
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                  text = cal.accountEmail,
-                  fontFamily = ArchivoFont,
-                  fontWeight = FontWeight.Normal,
-                  fontSize = 10.sp,
-                  color = colors.textSecondary
+                  text = "CONTA: $accountEmail",
+                  style = SectionLabelStyle,
+                  color = colors.text,
+                  maxLines = 1
                 )
+              }
+              Text(
+                text = if (allSelected) "Desativar conta" else "Ativar conta",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = colors.accentDark,
+                modifier = Modifier.clickable {
+                  onToggleAccount?.invoke(accountEmail, !allSelected)
+                }
+              )
+            }
+
+            Ruler1dp()
+
+            // Calendars of this account
+            accountCals.forEachIndexed { idx, cal ->
+              val calColor = try {
+                Color(android.graphics.Color.parseColor(cal.colorHex))
+              } catch (e: Exception) {
+                colors.accent
+              }
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable {
+                    onToggleCalendar?.invoke(cal.id)
+                  }
+                  .background(if (cal.isSelected) colors.accent.copy(alpha = 0.05f) else Color.Transparent)
+                  .padding(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                  Box(modifier = Modifier.size(10.dp).background(calColor))
+                  Spacer(modifier = Modifier.width(10.dp))
+                  Text(
+                    text = cal.name,
+                    fontFamily = ArchivoFont,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp,
+                    color = colors.text
+                  )
+                }
+                ModernistCheckbox(
+                  checked = cal.isSelected,
+                  onCheckedChange = {
+                    onToggleCalendar?.invoke(cal.id)
+                  },
+                  size = 18.dp
+                )
+              }
+              if (idx < accountCals.lastIndex) {
+                Ruler1dp()
               }
             }
-            ModernistCheckbox(
-              checked = cal.isSelected,
-              onCheckedChange = {
-                onToggleCalendar?.invoke(cal.id)
-              },
-              size = 18.dp
-            )
           }
-          if (idx < displayCalendars.lastIndex) {
-            Ruler1dp()
-          }
+          Spacer(modifier = Modifier.height(10.dp))
         }
       }
-      Spacer(modifier = Modifier.height(14.dp))
+      Spacer(modifier = Modifier.height(12.dp))
       ModernistButton(
         text = "Pronto (${displayCalendars.count { it.isSelected }} selecionados)",
         onClick = { showCalendarsDialog = false },

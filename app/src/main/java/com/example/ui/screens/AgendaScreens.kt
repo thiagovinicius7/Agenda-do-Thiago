@@ -53,11 +53,13 @@ import java.util.Locale
 @Composable
 fun AgendaScreen(
   events: List<CalendarEvent>,
+  calendars: List<GoogleCalendar> = emptyList(),
   viewMode: CalendarViewMode,
   selectedDate: LocalDate,
   onSelectViewMode: (CalendarViewMode) -> Unit,
   onSelectDate: (LocalDate) -> Unit,
   onCreateEvent: () -> Unit,
+  onOpenEvent: (String) -> Unit = {},
   onSyncNow: () -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -226,7 +228,7 @@ fun AgendaScreen(
 
       Spacer(modifier = Modifier.height(12.dp))
 
-      // View Mode Selector Chips (Mês / Semana / Dia / Calendários)
+      // View Mode Selector Chips (Mês / Semana / Dia)
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -238,43 +240,6 @@ fun AgendaScreen(
         Spacer(modifier = Modifier.weight(1f))
         ViewModeChip("↻ Sincronizar", isSelected = false) { onSyncNow() }
       }
-
-      Spacer(modifier = Modifier.height(10.dp))
-
-      // Google Calendar Sync Info Strip
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .background(colors.track)
-          .border(0.5.dp, colors.rulerWeak, RectangleShape)
-          .clickable { onSyncNow() }
-          .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(
-            modifier = Modifier
-              .size(7.dp)
-              .background(colors.accent)
-          )
-          Spacer(modifier = Modifier.width(6.dp))
-          Text(
-            text = "Google Agenda · thiagovinicius7@gmail.com",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 10.5.sp,
-            color = colors.text
-          )
-        }
-        Text(
-          text = "↻ Sincronizar agora",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.Bold,
-          fontSize = 10.sp,
-          color = colors.accentDark
-        )
-      }
     }
 
     Ruler2dp()
@@ -285,7 +250,8 @@ fun AgendaScreen(
           events = events,
           selectedDate = selectedDate,
           onSelectDate = onSelectDate,
-          onCreateEvent = onCreateEvent
+          onCreateEvent = onCreateEvent,
+          onOpenEvent = onOpenEvent
         )
       }
       CalendarViewMode.SEMANA -> {
@@ -293,14 +259,16 @@ fun AgendaScreen(
           events = events,
           selectedDate = selectedDate,
           onSelectDate = onSelectDate,
-          onCreateEvent = onCreateEvent
+          onCreateEvent = onCreateEvent,
+          onOpenEvent = onOpenEvent
         )
       }
       CalendarViewMode.DIA -> {
         AgendaDayView(
           events = events,
           selectedDate = selectedDate,
-          onCreateEvent = onCreateEvent
+          onCreateEvent = onCreateEvent,
+          onOpenEvent = onOpenEvent
         )
       }
     }
@@ -312,12 +280,12 @@ private fun AgendaMonthView(
   events: List<CalendarEvent>,
   selectedDate: LocalDate,
   onSelectDate: (LocalDate) -> Unit,
-  onCreateEvent: () -> Unit
+  onCreateEvent: () -> Unit,
+  onOpenEvent: (String) -> Unit = {}
 ) {
   val colors = LocalBlocoColors.current
   val firstOfMonth = selectedDate.withDayOfMonth(1)
   val daysInMonth = selectedDate.lengthOfMonth()
-  // DayOfWeek.MONDAY=1..SUNDAY=7. In Sunday-first header: SUNDAY=0, MONDAY=1..SATURDAY=6
   val startDayOffset = (firstOfMonth.dayOfWeek.value % 7)
 
   val totalCells = ((startDayOffset + daysInMonth + 6) / 7) * 7
@@ -466,7 +434,7 @@ private fun AgendaMonthView(
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .clickable(onClick = onCreateEvent)
+              .clickable { onOpenEvent(ev.id) }
               .padding(vertical = 10.dp),
             verticalAlignment = Alignment.Top
           ) {
@@ -526,15 +494,6 @@ private fun AgendaMonthView(
         onClick = onCreateEvent,
         modifier = Modifier.weight(1f)
       )
-      Box(
-        modifier = Modifier
-          .border(1.dp, colors.rulerStrong, RectangleShape)
-          .clickable(onClick = onCreateEvent)
-          .padding(14.dp),
-        contentAlignment = Alignment.Center
-      ) {
-        Text(text = "Anexar post-it", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text)
-      }
     }
 
     Spacer(modifier = Modifier.height(40.dp))
@@ -546,11 +505,11 @@ private fun AgendaWeekView(
   events: List<CalendarEvent>,
   selectedDate: LocalDate,
   onSelectDate: (LocalDate) -> Unit,
-  onCreateEvent: () -> Unit
+  onCreateEvent: () -> Unit,
+  onOpenEvent: (String) -> Unit = {}
 ) {
   val colors = LocalBlocoColors.current
   val today = LocalDate.now()
-  // Week from Monday to Sunday
   val dayOfWeek = selectedDate.dayOfWeek.value // 1 (Mon) to 7 (Sun)
   val monday = selectedDate.minusDays((dayOfWeek - 1).toLong())
   val weekDays = (0..6).map { monday.plusDays(it.toLong()) }
@@ -631,7 +590,13 @@ private fun AgendaWeekView(
               .weight(1f)
               .fillMaxSize()
               .border(0.5.dp, colors.rulerWeak, RectangleShape)
-              .clickable { onCreateEvent() }
+              .clickable {
+                if (matchingEvent != null) {
+                  onOpenEvent(matchingEvent.id)
+                } else {
+                  onCreateEvent()
+                }
+              }
               .padding(2.dp)
           ) {
             if (matchingEvent != null) {
@@ -656,28 +621,6 @@ private fun AgendaWeekView(
       }
     }
 
-    // Legend
-    Row(
-      modifier = Modifier
-        .fillMaxWidth()
-        .padding(16.dp),
-      horizontalArrangement = Arrangement.spacedBy(14.dp),
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(9.dp).background(colors.accent))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = "Pessoal", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp)
-      }
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(modifier = Modifier.size(9.dp).background(colors.text))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(text = "Trabalho", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp)
-      }
-      Spacer(modifier = Modifier.weight(1f))
-      Text(text = "thiagovinicius7@gmail.com", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 9.5.sp, color = colors.textTertiary)
-    }
-
     Spacer(modifier = Modifier.height(40.dp))
   }
 }
@@ -686,7 +629,8 @@ private fun AgendaWeekView(
 private fun AgendaDayView(
   events: List<CalendarEvent>,
   selectedDate: LocalDate,
-  onCreateEvent: () -> Unit
+  onCreateEvent: () -> Unit,
+  onOpenEvent: (String) -> Unit = {}
 ) {
   val colors = LocalBlocoColors.current
 
@@ -712,7 +656,11 @@ private fun AgendaDayView(
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .clickable(onClick = onCreateEvent)
+          .clickable {
+            if (hourEvents.isEmpty()) {
+              onCreateEvent()
+            }
+          }
           .padding(vertical = 6.dp)
           .border(0.5.dp, colors.rulerWeak, RectangleShape)
           .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -741,7 +689,13 @@ private fun AgendaDayView(
                 .atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("HH:mm"))
 
-              Row(verticalAlignment = Alignment.Top) {
+              Row(
+                modifier = Modifier
+                  .fillMaxWidth()
+                  .clickable { onOpenEvent(ev.id) }
+                  .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.Top
+              ) {
                 Box(modifier = Modifier.width(4.dp).height(28.dp).background(colors.accent))
                 Spacer(modifier = Modifier.width(9.dp))
                 Column {
@@ -777,15 +731,6 @@ private fun AgendaDayView(
       horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
       ModernistButton(text = "Novo compromisso", onClick = onCreateEvent, modifier = Modifier.weight(1f))
-      Box(
-        modifier = Modifier
-          .border(1.dp, colors.rulerStrong, RectangleShape)
-          .clickable(onClick = onCreateEvent)
-          .padding(14.dp),
-        contentAlignment = Alignment.Center
-      ) {
-        Text(text = "Anexar post-it", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-      }
     }
     Spacer(modifier = Modifier.height(40.dp))
   }
@@ -1272,6 +1217,432 @@ fun OfflineScreen(
         contentAlignment = Alignment.Center
       ) {
         Text(text = "Voltar", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+      }
+    }
+  }
+}
+
+@Composable
+fun EventDetailScreen(
+  event: CalendarEvent?,
+  calendar: GoogleCalendar?,
+  onBack: () -> Unit,
+  onOpenNote: (String) -> Unit = {},
+  onDeleteEvent: (String) -> Unit,
+  onUpdateEvent: (id: String, title: String, calendarId: String, date: LocalDate, hour: Int, minute: Int, duration: Int, noteId: String?, noteTitle: String?) -> Unit,
+  modifier: Modifier = Modifier
+) {
+  val colors = LocalBlocoColors.current
+  val scrollState = rememberScrollState()
+
+  if (event == null) {
+    Column(
+      modifier = modifier
+        .fillMaxSize()
+        .background(colors.canvas)
+        .padding(24.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.Center
+    ) {
+      Text(
+        text = "Compromisso não encontrado",
+        fontFamily = ArchivoFont,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+      ModernistButton(text = "Voltar", onClick = onBack)
+    }
+    return
+  }
+
+  // Pre-programmed check: trabajo, faculdade, pessoal initial mock events are protected
+  val isProtected = event.id.startsWith("ev_mock_") || event.id.startsWith("gcal_mock_")
+
+  var isEditing by remember { mutableStateOf(false) }
+  var title by remember(event) { mutableStateOf(event.title) }
+  val eventLocalDate = remember(event) {
+    Instant.ofEpochMilli(event.startEpochMillis)
+      .atZone(ZoneId.systemDefault())
+      .toLocalDate()
+  }
+  val eventHour = remember(event) {
+    Instant.ofEpochMilli(event.startEpochMillis)
+      .atZone(ZoneId.systemDefault())
+      .hour
+  }
+  val eventMinute = remember(event) {
+    Instant.ofEpochMilli(event.startEpochMillis)
+      .atZone(ZoneId.systemDefault())
+      .minute
+  }
+
+  var selectedDate by remember(event) { mutableStateOf(eventLocalDate) }
+  var selectedHour by remember(event) { mutableStateOf(eventHour) }
+  var selectedMinute by remember(event) { mutableStateOf(eventMinute) }
+  var selectedDuration by remember(event) {
+    val durMin = ((event.endEpochMillis - event.startEpochMillis) / (1000 * 60)).toInt()
+    mutableStateOf(if (durMin in 15..480) durMin else 60)
+  }
+
+  val calColor = try {
+    if (calendar != null) Color(android.graphics.Color.parseColor(calendar.colorHex)) else colors.accent
+  } catch (e: Exception) {
+    colors.accent
+  }
+
+  val formattedDate = selectedDate.format(
+    DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale("pt", "BR"))
+  ).replaceFirstChar { it.uppercase() }
+
+  val formattedTime = if (event.isAllDay) {
+    "Dia todo"
+  } else {
+    String.format("%02d:%02d — %02d:%02d", selectedHour, selectedMinute, (selectedHour + (selectedDuration / 60)) % 24, (selectedMinute + (selectedDuration % 60)) % 60)
+  }
+
+  Column(
+    modifier = modifier
+      .fillMaxSize()
+      .background(colors.canvas)
+  ) {
+    // Top Bar
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 14.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          text = "← Voltar",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 11.sp,
+          color = colors.textSecondary,
+          modifier = Modifier.clickable(onClick = onBack)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+          text = if (isEditing) "EDITAR COMPROMISSO" else "DETALHES DO COMPROMISSO",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 12.sp,
+          color = colors.text
+        )
+      }
+
+      if (!isProtected && !isEditing) {
+        Text(
+          text = "Editar",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 11.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable { isEditing = true }
+        )
+      }
+    }
+
+    Ruler2dp()
+
+    Column(
+      modifier = Modifier
+        .weight(1f)
+        .verticalScroll(scrollState)
+        .padding(16.dp)
+    ) {
+      if (isEditing) {
+        Text(text = "TÍTULO", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
+        BasicTextField(
+          value = title,
+          onValueChange = { title = it },
+          textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = colors.text),
+          cursorBrush = SolidColor(colors.accent),
+          modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(colors.text))
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        Text(text = "HORA", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+          listOf(8, 9, 10, 11, 14, 15, 16, 18, 19, 20).forEach { h ->
+            val label = String.format("%02d:00", h)
+            ViewModeChip(label, isSelected = selectedHour == h) {
+              selectedHour = h
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(text = "DURAÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          listOf(Pair("30m", 30), Pair("1h", 60), Pair("1h30", 90), Pair("2h", 120)).forEach { (label, dur) ->
+            ViewModeChip(label, isSelected = selectedDuration == dur) {
+              selectedDuration = dur
+            }
+          }
+        }
+      } else {
+        // Event Title & Badge
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+          Box(
+            modifier = Modifier
+              .background(calColor.copy(alpha = 0.15f))
+              .border(1.dp, calColor, RectangleShape)
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+          ) {
+            Text(
+              text = calendar?.name ?: "Agenda",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 10.sp,
+              color = colors.text
+            )
+          }
+
+          if (isProtected) {
+            Box(
+              modifier = Modifier
+                .background(colors.track)
+                .border(1.dp, colors.rulerWeak, RectangleShape)
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+              Text(
+                text = "🔒 PRÉ-PROGRAMADO",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                color = colors.textSecondary
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+          text = event.title,
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 28.sp,
+          lineHeight = 30.sp,
+          letterSpacing = (-0.02).sp,
+          color = colors.text
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Date and Time Matrix Card
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.rulerStrong)
+            .border(1.dp, colors.rulerStrong, RectangleShape),
+          horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+          Column(
+            modifier = Modifier
+              .weight(1f)
+              .background(colors.canvas)
+              .padding(14.dp)
+          ) {
+            Text(text = "DATA", style = SectionLabelStyle, color = colors.textTertiary)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = formattedDate,
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 13.sp,
+              lineHeight = 16.sp,
+              color = colors.text
+            )
+          }
+
+          Column(
+            modifier = Modifier
+              .weight(1f)
+              .background(colors.canvas)
+              .padding(14.dp)
+          ) {
+            Text(text = "HORÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = formattedTime,
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 14.sp,
+              color = colors.accentDark
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Location card (if present)
+        if (!event.location.isNullOrBlank()) {
+          Column(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .padding(12.dp)
+          ) {
+            Text(text = "LOCALIZAÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "📍 ${event.location}",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 13.sp,
+              color = colors.text
+            )
+          }
+          Spacer(modifier = Modifier.height(14.dp))
+        }
+
+        // Attached Post-It Note
+        if (event.attachedNoteTitle != null) {
+          Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .background(colors.postItStudyBg)
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .clickable {
+                if (event.attachedNoteId != null) {
+                  onOpenNote(event.attachedNoteId)
+                }
+              }
+              .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Box(modifier = Modifier.size(10.dp).background(colors.accent))
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = event.attachedNoteTitle,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 13.sp,
+                color = colors.text
+              )
+              Text(
+                text = "Toque para abrir post-it completo",
+                fontFamily = ArchivoFont,
+                fontSize = 10.5.sp,
+                color = colors.accentPostItText
+              )
+            }
+            Text(
+              text = "Abrir →",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = colors.accentDark
+            )
+          }
+          Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Protection note
+        if (isProtected) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .background(colors.track)
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .padding(12.dp)
+          ) {
+            Text(
+              text = "ℹ Este compromisso (Trabalho/Faculdade/Pessoal) é pré-programado na sua grade e não pode ser apagado.",
+              fontFamily = ArchivoFont,
+              fontSize = 11.sp,
+              color = colors.textSecondary
+            )
+          }
+        }
+      }
+    }
+
+    Ruler2dp()
+
+    // Bottom Action Row
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(16.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+      if (isEditing) {
+        ModernistButton(
+          text = "Salvar alterações",
+          onClick = {
+            onUpdateEvent(
+              event.id,
+              title.ifBlank { event.title },
+              event.calendarId,
+              selectedDate,
+              selectedHour,
+              selectedMinute,
+              selectedDuration,
+              event.attachedNoteId,
+              event.attachedNoteTitle
+            )
+            isEditing = false
+          },
+          modifier = Modifier.weight(1f)
+        )
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { isEditing = false }
+            .padding(14.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(text = "Cancelar", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.text)
+        }
+      } else {
+        if (!isProtected) {
+          Box(
+            modifier = Modifier
+              .border(1.dp, colors.accentDark, RectangleShape)
+              .background(colors.accent.copy(alpha = 0.05f))
+              .clickable { onDeleteEvent(event.id) }
+              .padding(14.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "Excluir compromisso",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 12.sp,
+              color = colors.accentDark
+            )
+          }
+        }
+        ModernistButton(
+          text = "Fechar",
+          onClick = onBack,
+          modifier = Modifier.weight(1f)
+        )
       }
     }
   }

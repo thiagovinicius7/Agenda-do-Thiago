@@ -39,6 +39,9 @@ interface CalendarDao {
   @Query("DELETE FROM calendar_events WHERE id = :id")
   suspend fun deleteEvent(id: String)
 
+  @Query("DELETE FROM calendar_events WHERE id LIKE 'gcal_%'")
+  suspend fun deleteMockEvents()
+
   @Query("SELECT * FROM calendar_events WHERE title LIKE '%' || :query || '%'")
   fun searchEvents(query: String): Flow<List<CalendarEvent>>
 

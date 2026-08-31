@@ -56,6 +56,7 @@ import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
 import com.example.ui.screens.AgendaScreen
 import com.example.ui.screens.EventCreateScreen
+import com.example.ui.screens.EventDetailScreen
 import com.example.ui.screens.HabitConcludedScreen
 import com.example.ui.screens.HabitCreateScreen
 import com.example.ui.screens.HabitDetailScreen
@@ -200,11 +201,10 @@ fun BlocoApp(
                   onToggleHabitForDate = { id, epoch -> viewModel.toggleHabitDay(id, epoch) },
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
                   onOpenNote = { noteId -> viewModel.openNote(noteId) },
+                  onOpenEvent = { eventId -> viewModel.openEvent(eventId) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
                   onCreateHabit = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
-                  onCreateNote = { viewModel.openNote("") },
-                  onToggleCalendar = { viewModel.toggleCalendarSelection(it) },
-                  onOpenCalendarsDialog = { viewModel.setOverlay(ActiveOverlay.SETTINGS) }
+                  onCreateNote = { viewModel.openNote("") }
                 )
               }
               TopSection.MURAL -> {
@@ -224,11 +224,13 @@ fun BlocoApp(
               TopSection.AGENDA -> {
                 AgendaScreen(
                   events = events,
+                  calendars = calendars,
                   viewMode = uiState.calendarViewMode,
                   selectedDate = uiState.selectedCalendarDate,
                   onSelectViewMode = { viewModel.setCalendarViewMode(it) },
                   onSelectDate = { viewModel.selectCalendarDate(it) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
+                  onOpenEvent = { eventId -> viewModel.openEvent(eventId) },
                   onSyncNow = {
                     val hasPermission = ContextCompat.checkSelfPermission(
                       context,
@@ -332,6 +334,20 @@ fun BlocoApp(
               }
             )
           }
+          ActiveOverlay.EVENT_DETAIL -> {
+            val selectedEvent = events.find { it.id == uiState.selectedEventId }
+            val eventCalendar = calendars.find { it.id == selectedEvent?.calendarId }
+            EventDetailScreen(
+              event = selectedEvent,
+              calendar = eventCalendar,
+              onBack = { viewModel.closeOverlay() },
+              onOpenNote = { noteId -> viewModel.openNote(noteId) },
+              onDeleteEvent = { eventId -> viewModel.deleteEvent(eventId) },
+              onUpdateEvent = { id, title, calId, date, hour, min, dur, noteId, noteTitle ->
+                viewModel.updateEvent(id, title, calId, date, hour, min, dur, noteId, noteTitle)
+              }
+            )
+          }
           ActiveOverlay.OFFLINE -> {
             OfflineScreen(
               syncQueue = syncQueue,
@@ -354,6 +370,7 @@ fun BlocoApp(
               onBack = { viewModel.closeOverlay() },
               calendars = calendars,
               onToggleCalendar = { calId -> viewModel.toggleCalendarSelection(calId) },
+              onToggleAccount = { email, isSelected -> viewModel.toggleAccountSelection(email, isSelected) },
               onSelectAllCalendars = { isSelected -> viewModel.selectAllCalendars(isSelected) },
               onClearData = { viewModel.clearAllData() },
               onSyncCalendar = {
@@ -418,7 +435,7 @@ fun BlocoTopTabBar(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-          text = "AGENDA DO THIAGO",
+          text = "BLOCO T",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 14.sp,

@@ -41,6 +41,7 @@ enum class ActiveOverlay {
   HABIT_CREATE,
   HABIT_CONCLUDED,
   EVENT_CREATE,
+  EVENT_DETAIL,
   SEARCH,
   SETTINGS,
   ONBOARDING,
@@ -69,6 +70,7 @@ data class BlocoUiState(
   val isDarkTheme: Boolean = false,
   val selectedNoteId: String? = null,
   val selectedHabitId: String? = "h_corrida",
+  val selectedEventId: String? = null,
   val selectedHojeDate: LocalDate = LocalDate.now(),
   val selectedCalendarDate: LocalDate = LocalDate.now(),
   val calendarViewMode: CalendarViewMode = CalendarViewMode.MES,
@@ -166,6 +168,55 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
 
   fun openHabit(habitId: String) {
     _uiState.value = _uiState.value.copy(selectedHabitId = habitId, activeOverlay = ActiveOverlay.HABIT_DETAIL)
+  }
+
+  fun openEvent(eventId: String) {
+    _uiState.value = _uiState.value.copy(selectedEventId = eventId, activeOverlay = ActiveOverlay.EVENT_DETAIL)
+  }
+
+  fun deleteEvent(eventId: String) {
+    viewModelScope.launch {
+      repository.deleteEvent(eventId)
+      if (_uiState.value.selectedEventId == eventId) {
+        closeOverlay()
+      }
+    }
+  }
+
+  fun updateEvent(
+    id: String,
+    title: String,
+    calendarId: String,
+    date: LocalDate,
+    startTimeHour: Int,
+    startTimeMinute: Int,
+    durationMinutes: Int,
+    attachedNoteId: String? = null,
+    attachedNoteTitle: String? = null,
+    isLocalOnly: Boolean = false
+  ) {
+    viewModelScope.launch {
+      val startEpoch = date.atTime(startTimeHour, startTimeMinute).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+      val event = CalendarEvent(
+        id = id,
+        calendarId = calendarId,
+        title = title.ifBlank { "Compromisso" },
+        startEpochMillis = startEpoch,
+        endEpochMillis = startEpoch + (durationMinutes * 60 * 1000),
+        attachedNoteId = attachedNoteId,
+        attachedNoteTitle = attachedNoteTitle,
+        isLocalOnly = isLocalOnly,
+        isPendingSync = !isLocalOnly
+      )
+      repository.updateEvent(event)
+      closeOverlay()
+    }
+  }
+
+  fun toggleAccountSelection(accountEmail: String, isSelected: Boolean) {
+    viewModelScope.launch {
+      repository.toggleAccountSelection(accountEmail, isSelected)
+    }
   }
 
   fun toggleChecklistItem(itemId: String, currentDone: Boolean) {

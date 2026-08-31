@@ -54,11 +54,10 @@ fun HojeScreen(
   onToggleHabitForDate: (String, Long) -> Unit = { id, _ -> onToggleHabit(id) },
   onOpenHabit: (String) -> Unit,
   onOpenNote: (String) -> Unit,
+  onOpenEvent: (String) -> Unit = {},
   onCreateEvent: () -> Unit = {},
   onCreateHabit: () -> Unit = {},
   onCreateNote: () -> Unit = {},
-  onToggleCalendar: (String) -> Unit = {},
-  onOpenCalendarsDialog: () -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -198,76 +197,6 @@ fun HojeScreen(
           )
         }
       }
-
-      // Quick Calendar chips if multiple calendars exist
-      if (calendars.size > 1) {
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-          horizontalArrangement = Arrangement.spacedBy(6.dp),
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Text(
-            text = "AGENDAS:",
-            style = SectionLabelStyle,
-            color = colors.textTertiary,
-            fontSize = 9.sp
-          )
-          calendars.forEach { cal ->
-            val isSelected = cal.isSelected
-            val calColor = try {
-              Color(android.graphics.Color.parseColor(cal.colorHex))
-            } catch (e: Exception) {
-              colors.accent
-            }
-
-            Box(
-              modifier = Modifier
-                .background(if (isSelected) calColor.copy(alpha = 0.15f) else Color.Transparent)
-                .border(
-                  width = if (isSelected) 1.5.dp else 1.dp,
-                  color = if (isSelected) calColor else colors.rulerWeak,
-                  shape = RectangleShape
-                )
-                .clickable { onToggleCalendar(cal.id) }
-                .padding(horizontal = 8.dp, vertical = 3.dp)
-            ) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-              ) {
-                Box(
-                  modifier = Modifier
-                    .size(6.dp)
-                    .background(calColor)
-                )
-                Text(
-                  text = cal.name,
-                  fontFamily = ArchivoFont,
-                  fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                  fontSize = 10.sp,
-                  color = if (isSelected) colors.text else colors.textTertiary
-                )
-              }
-            }
-          }
-          Box(
-            modifier = Modifier
-              .clickable { onOpenCalendarsDialog() }
-              .padding(horizontal = 6.dp, vertical = 3.dp)
-          ) {
-            Text(
-              text = "⚙ Filtrar",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.SemiBold,
-              fontSize = 10.sp,
-              color = colors.accentDark
-            )
-          }
-        }
-      }
     }
 
     Ruler2dp()
@@ -335,13 +264,7 @@ fun HojeScreen(
             Row(
               modifier = Modifier
                 .fillMaxWidth()
-                .clickable {
-                  if (ev.attachedNoteId != null) {
-                    onOpenNote(ev.attachedNoteId)
-                  } else {
-                    onCreateEvent()
-                  }
-                }
+                .clickable { onOpenEvent(ev.id) }
                 .padding(vertical = 10.dp),
               verticalAlignment = Alignment.CenterVertically
             ) {
