@@ -206,10 +206,52 @@ fun SettingsScreen(
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
+  // User State
+  var userName by remember { mutableStateOf("Thiago Vinicius") }
+  var userEmail by remember { mutableStateOf("thiagovinicius7@gmail.com") }
+  var isGoogleConnected by remember { mutableStateOf(true) }
+
+  // Settings Toggles
   var bgSync by remember { mutableStateOf(true) }
   var habitsInCalendar by remember { mutableStateOf(true) }
   var autoArchive by remember { mutableStateOf(true) }
   var countInDays by remember { mutableStateOf(true) }
+  var weekStart by remember { mutableStateOf("Domingo") }
+  var lastSyncText by remember { mutableStateOf("há poucos segundos") }
+  var lastBackupText by remember { mutableStateOf("hoje 06:00") }
+
+  // Categories list
+  var categories by remember {
+    mutableStateOf(
+      listOf(
+        Triple("Trabalho", colors.postItWorkBg, colors.accent),
+        Triple("Pessoal", colors.postItPersonalBg, colors.text),
+        Triple("Estudo", colors.postItStudyBg, colors.gridFail)
+      )
+    )
+  }
+
+  // Calendars
+  var activeCalendars by remember {
+    mutableStateOf(
+      listOf(
+        Pair("Pessoal", true),
+        Pair("Trabalho", true),
+        Pair("Faculdade", false),
+        Pair("Feriados no Brasil", true)
+      )
+    )
+  }
+
+  // Dialog States
+  var showAccountDialog by remember { mutableStateOf(false) }
+  var showDisconnectDialog by remember { mutableStateOf(false) }
+  var showCalendarsDialog by remember { mutableStateOf(false) }
+  var showNewCategoryDialog by remember { mutableStateOf(false) }
+  var showWeekStartDialog by remember { mutableStateOf(false) }
+  var showExportDialog by remember { mutableStateOf(false) }
+  var showBackupDialog by remember { mutableStateOf(false) }
+  var showArchiveDialog by remember { mutableStateOf(false) }
 
   Column(
     modifier = modifier
@@ -223,7 +265,7 @@ fun SettingsScreen(
         .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
       Text(
-        text = "← Hoje",
+        text = "← Voltar",
         fontFamily = ArchivoFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
@@ -251,23 +293,54 @@ fun SettingsScreen(
       Row(
         modifier = Modifier
           .fillMaxWidth()
+          .clickable { showAccountDialog = true }
           .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
         Box(
           modifier = Modifier
             .size(44.dp)
-            .background(colors.text),
+            .background(if (isGoogleConnected) colors.text else colors.track),
           contentAlignment = Alignment.Center
         ) {
-          Text(text = "A", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = colors.canvas)
+          Text(
+            text = userName.firstOrNull()?.uppercase() ?: "T",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 16.sp,
+            color = if (isGoogleConnected) colors.canvas else colors.textTertiary
+          )
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-          Text(text = "Ana Ribeiro", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.text)
-          Text(text = "ana@gmail.com · 2 calendários", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 11.sp, color = colors.textSecondary)
+          Text(
+            text = userName,
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 14.sp,
+            color = colors.text
+          )
+          Text(
+            text = if (isGoogleConnected) "$userEmail · ${activeCalendars.count { it.second }} calendários ativos" else "Modo offline local",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Normal,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
         }
-        Text(text = "Trocar", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.accentDark)
+        Box(
+          modifier = Modifier
+            .clickable { showAccountDialog = true }
+            .padding(8.dp)
+        ) {
+          Text(
+            text = "Trocar",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            color = colors.accentDark
+          )
+        }
       }
 
       Ruler2dp()
@@ -281,7 +354,7 @@ fun SettingsScreen(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
           Text(text = "Modo escuro (Modernist Dark)", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
           Text(text = if (isDarkTheme) "Fundo escuro (#201e1d) ativado" else "Fundo claro (#f3f2f2) ativado", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
         }
@@ -291,18 +364,48 @@ fun SettingsScreen(
 
       // Group 1: Sincronização
       Text(text = "SINCRONIZAÇÃO", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
-      SettingsRowWithNav("Calendários do Google", "Pessoal, Trabalho")
+      
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showCalendarsDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column(modifier = Modifier.weight(1f)) {
+          Text(text = "Calendários do Google", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(
+            text = activeCalendars.filter { it.second }.joinToString(", ") { it.first }.ifEmpty { "Nenhum ativo" },
+            fontFamily = ArchivoFont,
+            fontSize = 10.5.sp,
+            color = colors.textSecondary
+          )
+        }
+        Text(text = "→", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+      }
       Ruler1dp()
+      
       SettingsRowWithSwitch("Sincronizar em segundo plano", null, bgSync) { bgSync = it }
       Ruler1dp()
       SettingsRowWithSwitch("Hábitos na agenda", "Só dentro do app, não no Google.", habitsInCalendar) { habitsInCalendar = it }
       Ruler1dp()
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable {
+            lastSyncText = "agora mesmo"
+          }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(text = "Última sincronização", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        Text(text = "há 4 min", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+        Column {
+          Text(text = "Última sincronização", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(text = "Toque para sincronizar agora", fontFamily = ArchivoFont, fontSize = 10.sp, color = colors.textTertiary)
+        }
+        Text(text = lastSyncText, fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.accent)
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -310,28 +413,53 @@ fun SettingsScreen(
 
       // Group 2: Mural
       Text(text = "MURAL", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
-      SettingsRowWithNav("Categorias e cores", null)
-      Ruler1dp()
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showNewCategoryDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(text = "Categorias e cores", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+        Text(text = "→", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+      }
+      Ruler1dp()
+      
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
       ) {
-        CategoryPill("Trabalho", colors.postItWorkBg, colors.accent)
-        CategoryPill("Pessoal", colors.postItPersonalBg, colors.text)
-        CategoryPill("Estudo", colors.postItStudyBg, colors.gridFail)
-        Box(modifier = Modifier.border(1.dp, colors.rulerStrong, RectangleShape).padding(horizontal = 9.dp, vertical = 6.dp)) {
-          Text(text = "+ nova", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textTertiary)
+        categories.forEach { cat ->
+          CategoryPill(cat.first, cat.second, cat.third)
+        }
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { showNewCategoryDialog = true }
+            .padding(horizontal = 9.dp, vertical = 6.dp)
+        ) {
+          Text(text = "+ nova", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.accent)
         }
       }
       Ruler1dp()
+      
       SettingsRowWithSwitch("Concluídos vão para o arquivo", null, autoArchive) { autoArchive = it }
       Ruler1dp()
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showArchiveDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
         Text(text = "Arquivo", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        Text(text = "31 notas", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+        Text(text = "31 notas →", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -340,7 +468,10 @@ fun SettingsScreen(
       // Group 3: Hábitos
       Text(text = "HÁBITOS", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showWeekStartDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
@@ -349,7 +480,7 @@ fun SettingsScreen(
           Text(text = "Afeta “X× por semana”.", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
         }
         Box(modifier = Modifier.border(1.dp, colors.rulerStrong, RectangleShape).padding(horizontal = 12.dp, vertical = 8.dp)) {
-          Text(text = "Domingo", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text)
+          Text(text = weekStart, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text)
         }
       }
       Ruler1dp()
@@ -360,31 +491,392 @@ fun SettingsScreen(
 
       // Group 4: Dados
       Text(text = "DADOS", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showExportDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(text = "Exportar tudo", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        Text(text = "Markdown, CSV", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+        Column {
+          Text(text = "Exportar tudo", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(text = "Toque para salvar Markdown e CSV", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
+        }
+        Text(text = "Markdown, CSV →", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.text)
       }
       Ruler1dp()
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable {
+            lastBackupText = "hoje agora"
+            showBackupDialog = true
+          }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(text = "Backup no aparelho", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
-        Text(text = "hoje 06:00", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+        Column {
+          Text(text = "Backup no aparelho", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(text = "Salvar cópia completa local", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
+        }
+        Text(text = "$lastBackupText →", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
       }
       Ruler1dp()
+      
       Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable {
+            if (isGoogleConnected) {
+              showDisconnectDialog = true
+            } else {
+              isGoogleConnected = true
+            }
+          }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(text = "Desconectar do Google", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.accentDark)
-        Text(text = "→", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.accentDark)
+        Text(
+          text = if (isGoogleConnected) "Desconectar do Google" else "Conectar ao Google",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 13.sp,
+          color = if (isGoogleConnected) colors.accentDark else colors.accent
+        )
+        Text(
+          text = "→",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 13.sp,
+          color = if (isGoogleConnected) colors.accentDark else colors.accent
+        )
       }
 
       Spacer(modifier = Modifier.height(40.dp))
+    }
+  }
+
+  // --- DIALOGS ---
+
+  // 1. Account Edit Dialog
+  if (showAccountDialog) {
+    var editName by remember { mutableStateOf(userName) }
+    var editEmail by remember { mutableStateOf(userEmail) }
+
+    ModernistSimpleDialog(
+      title = "EDITAR CONTA",
+      onDismiss = { showAccountDialog = false }
+    ) {
+      Text("Nome do usuário:", fontFamily = ArchivoFont, fontSize = 11.sp, color = colors.textSecondary)
+      Spacer(modifier = Modifier.height(4.dp))
+      BasicTextField(
+        value = editName,
+        onValueChange = { editName = it },
+        textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text),
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.track)
+          .padding(10.dp)
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+      Text("E-mail Google:", fontFamily = ArchivoFont, fontSize = 11.sp, color = colors.textSecondary)
+      Spacer(modifier = Modifier.height(4.dp))
+      BasicTextField(
+        value = editEmail,
+        onValueChange = { editEmail = it },
+        textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text),
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.track)
+          .padding(10.dp)
+      )
+      Spacer(modifier = Modifier.height(16.dp))
+      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModernistButton(
+          text = "Cancelar",
+          onClick = { showAccountDialog = false },
+          isPrimary = false,
+          modifier = Modifier.weight(1f)
+        )
+        ModernistButton(
+          text = "Salvar",
+          onClick = {
+            userName = editName.trim()
+            userEmail = editEmail.trim()
+            showAccountDialog = false
+          },
+          modifier = Modifier.weight(1f)
+        )
+      }
+    }
+  }
+
+  // 2. Disconnect Dialog
+  if (showDisconnectDialog) {
+    ModernistSimpleDialog(
+      title = "DESCONECTAR CONTA",
+      onDismiss = { showDisconnectDialog = false }
+    ) {
+      Text(
+        text = "Deseja desconectar a conta ${userEmail}? Seus post-its e hábitos locais serão mantidos no dispositivo.",
+        fontFamily = ArchivoFont,
+        fontSize = 12.5.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(16.dp))
+      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModernistButton(
+          text = "Manter",
+          onClick = { showDisconnectDialog = false },
+          isPrimary = false,
+          modifier = Modifier.weight(1f)
+        )
+        ModernistButton(
+          text = "Desconectar",
+          onClick = {
+            isGoogleConnected = false
+            showDisconnectDialog = false
+          },
+          modifier = Modifier.weight(1f)
+        )
+      }
+    }
+  }
+
+  // 3. Calendars Dialog
+  if (showCalendarsDialog) {
+    ModernistSimpleDialog(
+      title = "CALENDÁRIOS DO GOOGLE",
+      onDismiss = { showCalendarsDialog = false }
+    ) {
+      Text("Selecione quais calendários exibir na Agenda:", fontFamily = ArchivoFont, fontSize = 11.5.sp, color = colors.textSecondary)
+      Spacer(modifier = Modifier.height(10.dp))
+      Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
+        activeCalendars.forEachIndexed { idx, (calName, isChecked) ->
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable {
+                activeCalendars = activeCalendars.toMutableList().also {
+                  it[idx] = Pair(calName, !isChecked)
+                }
+              }
+              .padding(10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(text = calName, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = colors.text)
+            ModernistCheckbox(
+              checked = isChecked,
+              onCheckedChange = {
+                activeCalendars = activeCalendars.toMutableList().also { list ->
+                  list[idx] = Pair(calName, !isChecked)
+                }
+              }
+            )
+          }
+          if (idx < activeCalendars.lastIndex) {
+            Ruler1dp()
+          }
+        }
+      }
+      Spacer(modifier = Modifier.height(14.dp))
+      ModernistButton(
+        text = "Pronto",
+        onClick = { showCalendarsDialog = false },
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+  }
+
+  // 4. New Category Dialog
+  if (showNewCategoryDialog) {
+    var newCatName by remember { mutableStateOf("") }
+    ModernistSimpleDialog(
+      title = "NOVA CATEGORIA",
+      onDismiss = { showNewCategoryDialog = false }
+    ) {
+      Text("Nome da categoria:", fontFamily = ArchivoFont, fontSize = 11.sp, color = colors.textSecondary)
+      Spacer(modifier = Modifier.height(4.dp))
+      BasicTextField(
+        value = newCatName,
+        onValueChange = { newCatName = it },
+        textStyle = TextStyle(fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = colors.text),
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.track)
+          .padding(10.dp)
+      )
+      Spacer(modifier = Modifier.height(14.dp))
+      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModernistButton(
+          text = "Cancelar",
+          onClick = { showNewCategoryDialog = false },
+          isPrimary = false,
+          modifier = Modifier.weight(1f)
+        )
+        ModernistButton(
+          text = "Criar",
+          onClick = {
+            if (newCatName.isNotBlank()) {
+              categories = categories + Triple(newCatName.trim(), colors.postItStudyBg, colors.accent)
+            }
+            showNewCategoryDialog = false
+          },
+          modifier = Modifier.weight(1f)
+        )
+      }
+    }
+  }
+
+  // 5. Week Start Dialog
+  if (showWeekStartDialog) {
+    ModernistSimpleDialog(
+      title = "INÍCIO DA SEMANA",
+      onDismiss = { showWeekStartDialog = false }
+    ) {
+      listOf("Domingo", "Segunda-feira").forEach { option ->
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+              weekStart = option
+              showWeekStartDialog = false
+            }
+            .padding(vertical = 12.dp, horizontal = 8.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(text = option, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = colors.text)
+          if (weekStart == option) {
+            Text(text = "✓", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.accent)
+          }
+        }
+        Ruler1dp()
+      }
+    }
+  }
+
+  // 6. Export Dialog
+  if (showExportDialog) {
+    ModernistSimpleDialog(
+      title = "EXPORTAR DADOS",
+      onDismiss = { showExportDialog = false }
+    ) {
+      Text(
+        text = "Todos os seus post-its (Markdown) e histórico de hábitos (CSV) foram preparados para exportação.",
+        fontFamily = ArchivoFont,
+        fontSize = 12.5.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(8.dp))
+      Text(
+        text = "✓ 31 notas em .md\n✓ 4 hábitos em .csv\n✓ Salvo no armazenamento local",
+        fontFamily = ArchivoFont,
+        fontSize = 11.5.sp,
+        color = colors.textSecondary
+      )
+      Spacer(modifier = Modifier.height(14.dp))
+      ModernistButton(
+        text = "Concluir",
+        onClick = { showExportDialog = false },
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+  }
+
+  // 7. Backup Dialog
+  if (showBackupDialog) {
+    ModernistSimpleDialog(
+      title = "BACKUP REALIZADO",
+      onDismiss = { showBackupDialog = false }
+    ) {
+      Text(
+        text = "Cópia de segurança do banco de dados local gerada com sucesso.",
+        fontFamily = ArchivoFont,
+        fontSize = 12.5.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(14.dp))
+      ModernistButton(
+        text = "OK",
+        onClick = { showBackupDialog = false },
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+  }
+
+  // 8. Archive Dialog
+  if (showArchiveDialog) {
+    ModernistSimpleDialog(
+      title = "ARQUIVO DE NOTAS",
+      onDismiss = { showArchiveDialog = false }
+    ) {
+      Text(
+        text = "Você tem 31 notas e checklists concluídos no histórico.",
+        fontFamily = ArchivoFont,
+        fontSize = 12.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(10.dp))
+      Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
+        listOf("Proposta Fase 1 (Concluído)", "Compras de Escritório (Concluído)", "Planejamento Trimestral (Concluído)").forEachIndexed { i, title ->
+          Row(modifier = Modifier.fillMaxWidth().padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(text = title, fontFamily = ArchivoFont, fontSize = 11.5.sp, color = colors.textSecondary)
+            Text(text = "Restaurar", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.accentDark, modifier = Modifier.clickable { })
+          }
+          if (i < 2) Ruler1dp()
+        }
+      }
+      Spacer(modifier = Modifier.height(14.dp))
+      ModernistButton(
+        text = "Fechar",
+        onClick = { showArchiveDialog = false },
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+  }
+}
+
+@Composable
+fun ModernistSimpleDialog(
+  title: String,
+  onDismiss: () -> Unit,
+  content: @Composable () -> Unit
+) {
+  val colors = LocalBlocoColors.current
+  androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .background(colors.canvas)
+        .border(2.dp, colors.text, RectangleShape)
+        .padding(16.dp)
+    ) {
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(text = title, style = SectionLabelStyle, color = colors.text)
+        Text(
+          text = "✕",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 14.sp,
+          color = colors.textSecondary,
+          modifier = Modifier.clickable(onClick = onDismiss)
+        )
+      }
+      Spacer(modifier = Modifier.height(10.dp))
+      Ruler2dp()
+      Spacer(modifier = Modifier.height(12.dp))
+      content()
     }
   }
 }
@@ -475,7 +967,7 @@ fun OnboardingScreen(
 
     Spacer(modifier = Modifier.height(22.dp))
     ModernistButton(
-      text = "Conectar ana@gmail.com",
+      text = "Conectar thiagovinicius7@gmail.com",
       onClick = onConnect,
       modifier = Modifier.fillMaxWidth()
     )

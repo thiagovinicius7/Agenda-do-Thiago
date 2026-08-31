@@ -43,6 +43,9 @@ fun HojeScreen(
   onToggleHabit: (String) -> Unit,
   onOpenHabit: (String) -> Unit,
   onOpenNote: (String) -> Unit,
+  onCreateEvent: () -> Unit = {},
+  onCreateHabit: () -> Unit = {},
+  onCreateNote: () -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -66,15 +69,28 @@ fun HojeScreen(
         color = colors.textTertiary
       )
       Spacer(modifier = Modifier.height(4.dp))
-      Text(
-        text = "Hoje",
-        fontFamily = ArchivoFont,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 38.sp,
-        lineHeight = 38.sp,
-        letterSpacing = (-0.03).sp,
-        color = colors.text
-      )
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+      ) {
+        Text(
+          text = "Hoje",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 38.sp,
+          lineHeight = 38.sp,
+          letterSpacing = (-0.03).sp,
+          color = colors.text
+        )
+        Text(
+          text = "${habits.count { it.isDoneToday }}/${habits.size} hábitos concluídos",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 11.sp,
+          color = colors.accentDark
+        )
+      }
     }
 
     Ruler2dp()
@@ -85,18 +101,34 @@ fun HojeScreen(
         .fillMaxWidth()
         .padding(top = 14.dp)
     ) {
-      Text(
-        text = "COMPROMISSOS",
-        style = SectionLabelStyle,
-        color = colors.textTertiary,
-        modifier = Modifier.padding(horizontal = 16.dp)
-      )
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "COMPROMISSOS",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
+        )
+        Text(
+          text = "+ Novo",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 11.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable(onClick = onCreateEvent)
+        )
+      }
 
       Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         // Event 1: 09:00 Daily
         Row(
           modifier = Modifier
             .fillMaxWidth()
+            .clickable { onCreateEvent() }
             .padding(vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
@@ -122,7 +154,7 @@ fun HojeScreen(
         Row(
           modifier = Modifier
             .fillMaxWidth()
-            .clickable { notes.firstOrNull()?.note?.id?.let { onOpenNote(it) } }
+            .clickable { notes.firstOrNull()?.note?.id?.let { onOpenNote(it) } ?: onCreateEvent() }
             .padding(vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
@@ -143,11 +175,11 @@ fun HojeScreen(
               color = colors.text
             )
             Text(
-              text = "· 1 post-it",
+              text = "· 1 post-it anexado →",
               fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Normal,
-              fontSize = 13.sp,
-              color = colors.textTertiary
+              fontWeight = FontWeight.SemiBold,
+              fontSize = 12.sp,
+              color = colors.accentDark
             )
           }
         }
@@ -157,6 +189,7 @@ fun HojeScreen(
         Row(
           modifier = Modifier
             .fillMaxWidth()
+            .clickable { onCreateEvent() }
             .padding(vertical = 10.dp),
           verticalAlignment = Alignment.CenterVertically
         ) {
@@ -187,12 +220,27 @@ fun HojeScreen(
         .fillMaxWidth()
         .padding(top = 14.dp)
     ) {
-      Text(
-        text = "HÁBITOS DE HOJE",
-        style = SectionLabelStyle,
-        color = colors.textTertiary,
-        modifier = Modifier.padding(horizontal = 16.dp)
-      )
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "HÁBITOS DE HOJE",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
+        )
+        Text(
+          text = "+ Novo",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 11.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable(onClick = onCreateHabit)
+        )
+      }
 
       Column(
         modifier = Modifier
@@ -258,12 +306,27 @@ fun HojeScreen(
         .fillMaxWidth()
         .padding(top = 14.dp, bottom = 24.dp)
     ) {
-      Text(
-        text = "POST-ITS DO DIA",
-        style = SectionLabelStyle,
-        color = colors.textTertiary,
-        modifier = Modifier.padding(horizontal = 16.dp)
-      )
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(
+          text = "POST-ITS DO DIA",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
+        )
+        Text(
+          text = "+ Novo post-it",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 11.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable(onClick = onCreateNote)
+        )
+      }
 
       Row(
         modifier = Modifier
@@ -277,7 +340,7 @@ fun HojeScreen(
             .weight(1f)
             .height(88.dp)
             .background(colors.postItWorkBg)
-            .clickable { notes.firstOrNull()?.note?.id?.let { onOpenNote(it) } }
+            .clickable { notes.firstOrNull()?.note?.id?.let { onOpenNote(it) } ?: onCreateNote() }
             .padding(12.dp)
         ) {
           Column {
@@ -288,7 +351,7 @@ fun HojeScreen(
             )
             Spacer(modifier = Modifier.height(7.dp))
             Text(
-              text = "Levar proposta",
+              text = notes.firstOrNull()?.note?.title ?: "Levar proposta",
               fontFamily = ArchivoFont,
               fontWeight = FontWeight.ExtraBold,
               fontSize = 15.sp,
@@ -304,7 +367,7 @@ fun HojeScreen(
             .weight(1f)
             .height(88.dp)
             .background(colors.postItPersonalBg)
-            .clickable { notes.getOrNull(1)?.note?.id?.let { onOpenNote(it) } }
+            .clickable { notes.getOrNull(1)?.note?.id?.let { onOpenNote(it) } ?: onCreateNote() }
             .padding(12.dp)
         ) {
           Column {
@@ -315,7 +378,7 @@ fun HojeScreen(
             )
             Spacer(modifier = Modifier.height(7.dp))
             Text(
-              text = "Mercado",
+              text = notes.getOrNull(1)?.note?.title ?: "Mercado",
               fontFamily = ArchivoFont,
               fontWeight = FontWeight.ExtraBold,
               fontSize = 15.sp,

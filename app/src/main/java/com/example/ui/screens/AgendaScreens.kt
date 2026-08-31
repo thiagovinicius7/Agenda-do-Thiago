@@ -336,6 +336,7 @@ private fun AgendaMonthView(
       Box(
         modifier = Modifier
           .border(1.dp, colors.rulerStrong, RectangleShape)
+          .clickable(onClick = onCreateEvent)
           .padding(14.dp),
         contentAlignment = Alignment.Center
       ) {
@@ -501,6 +502,7 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
       Row(
         modifier = Modifier
           .fillMaxWidth()
+          .clickable(onClick = onCreateEvent)
           .padding(vertical = 6.dp)
           .border(0.5.dp, colors.rulerWeak, RectangleShape)
           .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -515,6 +517,15 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
           modifier = Modifier.width(36.dp)
         )
         Column(modifier = Modifier.weight(1f)) {
+          if (items.isEmpty()) {
+            Text(
+              text = "+ toque para adicionar",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Normal,
+              fontSize = 11.sp,
+              color = colors.textTertiary.copy(alpha = 0.5f)
+            )
+          }
           for ((itemTitle, isHabit) in items) {
             if (isHabit) {
               Row(verticalAlignment = Alignment.CenterVertically) {
@@ -550,6 +561,7 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
       Box(
         modifier = Modifier
           .border(1.dp, colors.rulerStrong, RectangleShape)
+          .clickable(onClick = onCreateEvent)
           .padding(14.dp),
         contentAlignment = Alignment.Center
       ) {
@@ -569,9 +581,13 @@ fun EventCreateScreen(
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
-  var title by remember { mutableStateOf("Prova — Cap. 4") }
+  var title by remember { mutableStateOf("Novo compromisso") }
   var selectedCalendar by remember { mutableStateOf("cal_pessoal") }
   var selectedDate by remember { mutableStateOf(LocalDate.of(2026, 9, 2)) }
+  var isAllDay by remember { mutableStateOf(false) }
+  var isRepeating by remember { mutableStateOf(false) }
+  var hasLocation by remember { mutableStateOf(false) }
+  var attachedPostIt by remember { mutableStateOf<String?>("Cap. 4 — anotações") }
 
   Column(
     modifier = modifier
@@ -628,15 +644,15 @@ fun EventCreateScreen(
         Column(modifier = Modifier.weight(1f).background(colors.canvas).padding(12.dp)) {
           Text(text = "HORÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
           Spacer(modifier = Modifier.height(7.dp))
-          Text(text = "14:00 — 15:00", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = colors.text)
+          Text(text = if (isAllDay) "Dia inteiro" else "14:00 — 15:00", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = colors.text)
         }
       }
 
       Spacer(modifier = Modifier.height(12.dp))
       Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        ViewModeChip("Dia inteiro", isSelected = false) {}
-        ViewModeChip("Repetir", isSelected = false) {}
-        ViewModeChip("Local", isSelected = false) {}
+        ViewModeChip("Dia inteiro", isSelected = isAllDay) { isAllDay = !isAllDay }
+        ViewModeChip("Repetir", isSelected = isRepeating) { isRepeating = !isRepeating }
+        ViewModeChip("Local", isSelected = hasLocation) { hasLocation = !hasLocation }
       }
 
       Spacer(modifier = Modifier.height(22.dp))
@@ -647,7 +663,7 @@ fun EventCreateScreen(
       Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
         CalendarOptionRow(
           name = "Pessoal",
-          email = "ana@gmail.com",
+          email = "thiagovinicius7@gmail.com",
           color = colors.accent,
           isSelected = selectedCalendar == "cal_pessoal",
           onClick = { selectedCalendar = "cal_pessoal" }
@@ -655,7 +671,7 @@ fun EventCreateScreen(
         Ruler1dp()
         CalendarOptionRow(
           name = "Trabalho",
-          email = "ana@empresa.com",
+          email = "thiago@empresa.com",
           color = colors.text,
           isSelected = selectedCalendar == "cal_trabalho",
           onClick = { selectedCalendar = "cal_trabalho" }
@@ -676,20 +692,40 @@ fun EventCreateScreen(
       // Post-it anexado
       Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(10.dp))
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .background(colors.postItStudyBg)
-          .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Box(modifier = Modifier.size(34.dp).background(colors.postItWorkBg))
-        Spacer(modifier = Modifier.width(11.dp))
-        Column(modifier = Modifier.weight(1f)) {
-          Text(text = "Cap. 4 — anotações", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.5.sp, color = colors.text)
-          Text(text = "Estudo · checklist 3 itens", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
+      if (attachedPostIt != null) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.postItStudyBg)
+            .padding(12.dp),
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Box(modifier = Modifier.size(34.dp).background(colors.postItWorkBg))
+          Spacer(modifier = Modifier.width(11.dp))
+          Column(modifier = Modifier.weight(1f)) {
+            Text(text = attachedPostIt ?: "", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.5.sp, color = colors.text)
+            Text(text = "Estudo · checklist 3 itens", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.5.sp, color = colors.textSecondary)
+          }
+          Text(
+            text = "Remover",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            color = colors.accentDark,
+            modifier = Modifier.clickable { attachedPostIt = null }
+          )
         }
-        Text(text = "Trocar", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.accentDark)
+      } else {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .clickable { attachedPostIt = "Cap. 4 — anotações" }
+            .padding(14.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(text = "+ Anexar post-it do mural", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.accent)
+        }
       }
 
       Spacer(modifier = Modifier.height(10.dp))
@@ -712,7 +748,7 @@ fun EventCreateScreen(
       ModernistButton(
         text = "Salvar no Google",
         onClick = {
-          onSave(title, selectedCalendar, selectedDate, 14, 0, 60, "n_estudo_1", "Cap. 4 — anotações", false)
+          onSave(title, selectedCalendar, selectedDate, 14, 0, 60, if (attachedPostIt != null) "n_estudo_1" else null, attachedPostIt, false)
         },
         modifier = Modifier.weight(1f)
       )
@@ -720,7 +756,7 @@ fun EventCreateScreen(
         modifier = Modifier
           .border(1.dp, colors.rulerStrong, RectangleShape)
           .clickable {
-            onSave(title, selectedCalendar, selectedDate, 14, 0, 60, "n_estudo_1", "Cap. 4 — anotações", true)
+            onSave(title, selectedCalendar, selectedDate, 14, 0, 60, if (attachedPostIt != null) "n_estudo_1" else null, attachedPostIt, true)
           }
           .padding(14.dp),
         contentAlignment = Alignment.Center
@@ -747,6 +783,43 @@ fun OfflineScreen(
       .background(colors.canvas)
       .verticalScroll(scrollState)
   ) {
+    // Top Bar
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 16.dp, vertical = 14.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          text = "← Voltar",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 11.sp,
+          color = colors.textSecondary,
+          modifier = Modifier.clickable(onClick = onBack)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+          text = "MODO OFFLINE",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 12.sp,
+          color = colors.text
+        )
+      }
+      Text(
+        text = "Desconectado",
+        fontFamily = ArchivoFont,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 10.sp,
+        color = colors.accentDark
+      )
+    }
+
+    Ruler2dp()
+
     // Offline Banner
     Box(
       modifier = Modifier

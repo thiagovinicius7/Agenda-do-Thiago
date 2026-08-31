@@ -279,21 +279,32 @@ fun HabitDetailScreen(
       .fillMaxSize()
       .background(colors.canvas)
   ) {
-    // Back navigation
+    // Back navigation & Header Bar
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .clickable(onClick = onBack)
-        .padding(horizontal = 16.dp, vertical = 12.dp)
+        .padding(horizontal = 16.dp, vertical = 12.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
     ) {
       Text(
         text = "← Hábitos",
         fontFamily = ArchivoFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
-        color = colors.textSecondary
+        color = colors.textSecondary,
+        modifier = Modifier.clickable(onClick = onBack)
+      )
+      Text(
+        text = "HÁBITO",
+        fontFamily = ArchivoFont,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 12.sp,
+        color = colors.textTertiary
       )
     }
+
+    Ruler2dp()
 
     Column(
       modifier = Modifier

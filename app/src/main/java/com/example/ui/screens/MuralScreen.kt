@@ -72,21 +72,32 @@ fun MuralScreen(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom
       ) {
+        Column {
+          Text(
+            text = "Mural",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 34.sp,
+            lineHeight = 34.sp,
+            letterSpacing = (-0.02).sp,
+            color = colors.text
+          )
+          Spacer(modifier = Modifier.height(2.dp))
+          Text(
+            text = "${notes.size} notas no total",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
         Text(
-          text = "Mural",
+          text = "+ Novo post-it",
           fontFamily = ArchivoFont,
-          fontWeight = FontWeight.ExtraBold,
-          fontSize = 34.sp,
-          lineHeight = 34.sp,
-          letterSpacing = (-0.02).sp,
-          color = colors.text
-        )
-        Text(
-          text = "${notes.size} notas",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.SemiBold,
-          fontSize = 11.sp,
-          color = colors.textSecondary
+          fontWeight = FontWeight.Bold,
+          fontSize = 12.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable(onClick = onCreateNewNote)
         )
       }
 

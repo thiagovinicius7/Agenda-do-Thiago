@@ -2,9 +2,11 @@ package com.example
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,7 @@ import com.example.data.model.Note
 import com.example.data.model.NoteFormat
 import com.example.data.model.NoteWithItems
 import com.example.data.repository.BlocoRepository
+import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
 import com.example.ui.screens.AgendaScreen
 import com.example.ui.screens.EventCreateScreen
@@ -108,6 +112,15 @@ fun BlocoApp(
   val events by viewModel.events.collectAsState()
   val syncQueue by viewModel.syncQueue.collectAsState()
 
+  // Handle system back button properly
+  BackHandler(enabled = uiState.activeOverlay != ActiveOverlay.NONE || uiState.currentSection != TopSection.HOJE) {
+    if (uiState.activeOverlay != ActiveOverlay.NONE) {
+      viewModel.closeOverlay()
+    } else if (uiState.currentSection != TopSection.HOJE) {
+      viewModel.setSection(TopSection.HOJE)
+    }
+  }
+
   Scaffold(
     modifier = Modifier
       .fillMaxSize()
@@ -139,7 +152,10 @@ fun BlocoApp(
                   notes = notes,
                   onToggleHabit = { viewModel.toggleHabitDay(it) },
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
-                  onOpenNote = { noteId -> viewModel.openNote(noteId) }
+                  onOpenNote = { noteId -> viewModel.openNote(noteId) },
+                  onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
+                  onCreateHabit = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
+                  onCreateNote = { viewModel.openNote("") }
                 )
               }
               TopSection.MURAL -> {
@@ -272,6 +288,7 @@ fun BlocoTopTabBar(
   val colors = LocalBlocoColors.current
 
   Column(modifier = modifier.fillMaxWidth()) {
+    // App Brand Title Bar
     Row(
       modifier = Modifier
         .fillMaxWidth()
@@ -280,9 +297,76 @@ fun BlocoTopTabBar(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      // 4 Section Tabs
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+          modifier = Modifier
+            .size(10.dp)
+            .background(colors.accent)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+          text = "AGENDA DO THIAGO",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 14.sp,
+          letterSpacing = 0.5.sp,
+          color = colors.text
+        )
+      }
+
+      // ⌕ and ⚙ Actions
       Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Box(
+          modifier = Modifier
+            .size(36.dp)
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .clickable(onClick = onOpenSearch)
+            .testTag("btn_search"),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "⌕",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+            color = colors.text
+          )
+        }
+        Box(
+          modifier = Modifier
+            .size(36.dp)
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .clickable(onClick = onOpenSettings)
+            .testTag("btn_settings"),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "⚙",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp,
+            color = colors.text
+          )
+        }
+      }
+    }
+
+    Ruler1dp()
+
+    // 4 Section Tabs Row
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .background(colors.canvas)
+        .padding(horizontal = 16.dp, vertical = 6.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
         TopTabItem(
@@ -309,43 +393,6 @@ fun BlocoTopTabBar(
           testTag = "tab_habitos",
           onClick = { onSelectSection(TopSection.HABITOS) }
         )
-      }
-
-      // ⌕ and ⚙ Actions
-      Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Box(
-          modifier = Modifier
-            .size(32.dp)
-            .clickable(onClick = onOpenSearch)
-            .testTag("btn_search"),
-          contentAlignment = Alignment.Center
-        ) {
-          Text(
-            text = "⌕",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            color = colors.text
-          )
-        }
-        Box(
-          modifier = Modifier
-            .size(32.dp)
-            .clickable(onClick = onOpenSettings)
-            .testTag("btn_settings"),
-          contentAlignment = Alignment.Center
-        ) {
-          Text(
-            text = "⚙",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp,
-            color = colors.text
-          )
-        }
       }
     }
 

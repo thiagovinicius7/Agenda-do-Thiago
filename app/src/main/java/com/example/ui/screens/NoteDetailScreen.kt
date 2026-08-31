@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,7 +59,9 @@ fun NoteDetailScreen(
   var body by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.body ?: "") }
   var selectedCategory by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.categoryId ?: "trabalho") }
   var format by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.format ?: NoteFormat.CHECKLIST) }
+  var isPinned by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.isPinned ?: false) }
   var newItemText by remember { mutableStateOf("") }
+  var showMoreMenu by remember { mutableStateOf(false) }
 
   val existingItems = noteWithItems?.items ?: emptyList()
   val extraItems = remember { mutableStateListOf<String>() }
@@ -86,20 +89,30 @@ fun NoteDetailScreen(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Text(
-        text = "← Mural",
-        fontFamily = ArchivoFont,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
-        color = colors.textSecondary,
-        modifier = Modifier.clickable(onClick = onBack)
-      )
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+          text = "← Mural",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 11.sp,
+          color = colors.textSecondary,
+          modifier = Modifier.clickable(onClick = onBack)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+          text = "POST-IT",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.ExtraBold,
+          fontSize = 12.sp,
+          color = colors.text
+        )
+      }
       Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "Salvo 14:32",
+          text = "Salvo agora",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.SemiBold,
           fontSize = 10.sp,
@@ -108,7 +121,8 @@ fun NoteDetailScreen(
         Box(
           modifier = Modifier
             .size(32.dp)
-            .border(1.dp, colors.rulerStrong, RectangleShape),
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { showMoreMenu = true },
           contentAlignment = Alignment.Center
         ) {
           Text(
@@ -120,6 +134,60 @@ fun NoteDetailScreen(
           )
         }
       }
+    }
+
+    if (showMoreMenu) {
+      AlertDialog(
+        onDismissRequest = { showMoreMenu = false },
+        title = {
+          Text(text = "Opções do post-it", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        },
+        text = {
+          Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+              text = if (isPinned) "Desafixar do topo" else "Fixar no topo",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp,
+              modifier = Modifier.fillMaxWidth().clickable {
+                isPinned = !isPinned
+                showMoreMenu = false
+              }.padding(vertical = 6.dp)
+            )
+            Text(
+              text = "Alternar para ${if (format == NoteFormat.CHECKLIST) "Texto simples" else "Checklist"}",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp,
+              modifier = Modifier.fillMaxWidth().clickable {
+                format = if (format == NoteFormat.CHECKLIST) NoteFormat.NOTE else NoteFormat.CHECKLIST
+                showMoreMenu = false
+              }.padding(vertical = 6.dp)
+            )
+            Text(
+              text = "Arquivar post-it",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp,
+              modifier = Modifier.fillMaxWidth().clickable {
+                showMoreMenu = false
+                onBack()
+              }.padding(vertical = 6.dp)
+            )
+          }
+        },
+        confirmButton = {
+          Text(
+            text = "Fechar",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable { showMoreMenu = false }.padding(8.dp)
+          )
+        },
+        shape = RectangleShape,
+        containerColor = colors.canvas
+      )
     }
 
     Ruler2dp()
@@ -395,24 +463,28 @@ fun NoteDetailScreen(
 
       Box(
         modifier = Modifier
-          .border(1.dp, colors.rulerStrong, RectangleShape)
-          .clickable { onBack() }
+          .then(if (isPinned) Modifier.background(colors.text) else Modifier.border(1.dp, colors.rulerStrong, RectangleShape))
+          .clickable { isPinned = !isPinned }
           .padding(14.dp),
         contentAlignment = Alignment.Center
       ) {
         Text(
-          text = "Fixar",
+          text = if (isPinned) "Fixado ✓" else "Fixar",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 13.sp,
-          color = colors.text
+          color = if (isPinned) colors.canvas else colors.text
         )
       }
 
       Box(
         modifier = Modifier
           .border(1.dp, colors.rulerStrong, RectangleShape)
-          .clickable { onBack() }
+          .clickable {
+            val allItems = existingItems.map { it.text } + extraItems
+            onSave(noteWithItems?.note?.id, title, body, selectedCategory, format, allItems)
+            onBack()
+          }
           .padding(14.dp),
         contentAlignment = Alignment.Center
       ) {
