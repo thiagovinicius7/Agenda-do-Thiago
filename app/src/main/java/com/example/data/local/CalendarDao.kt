@@ -41,6 +41,12 @@ interface CalendarDao {
 
   @Query("SELECT * FROM calendar_events WHERE title LIKE '%' || :query || '%'")
   fun searchEvents(query: String): Flow<List<CalendarEvent>>
+
+  @Query("DELETE FROM calendar_events")
+  suspend fun clearAllEvents()
+
+  @Query("DELETE FROM google_calendars")
+  suspend fun clearAllCalendars()
 }
 
 @Dao

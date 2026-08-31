@@ -266,9 +266,23 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     }
   }
 
+  fun clearAllData() {
+    viewModelScope.launch {
+      repository.clearAllPreloadedData()
+      repository.seedInitialDataIfEmpty()
+    }
+  }
+
+  fun syncDeviceCalendar(userEmail: String? = "thiagovinicius7@gmail.com") {
+    viewModelScope.launch {
+      repository.syncWithDeviceCalendar(userEmail)
+    }
+  }
+
   fun retrySync() {
     viewModelScope.launch {
       repository.clearSyncQueue()
+      repository.syncWithDeviceCalendar("thiagovinicius7@gmail.com")
     }
   }
 }

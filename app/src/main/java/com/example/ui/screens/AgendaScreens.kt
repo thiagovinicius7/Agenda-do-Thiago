@@ -44,7 +44,11 @@ import com.example.ui.theme.ArchivoFont
 import com.example.ui.theme.LocalBlocoColors
 import com.example.ui.theme.SectionLabelStyle
 import com.example.ui.viewmodel.CalendarViewMode
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun AgendaScreen(
@@ -148,7 +152,44 @@ fun AgendaScreen(
         ViewModeChip("Semana", isSelected = viewMode == CalendarViewMode.SEMANA) { onSelectViewMode(CalendarViewMode.SEMANA) }
         ViewModeChip("Dia", isSelected = viewMode == CalendarViewMode.DIA) { onSelectViewMode(CalendarViewMode.DIA) }
         Spacer(modifier = Modifier.weight(1f))
-        ViewModeChip("Calendários", isSelected = false) { onOpenOffline() }
+        ViewModeChip("Sincronização", isSelected = false) { onOpenOffline() }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Google Calendar Sync Info Strip
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.track)
+          .border(0.5.dp, colors.rulerWeak, RectangleShape)
+          .clickable { onOpenOffline() }
+          .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(
+            modifier = Modifier
+              .size(7.dp)
+              .background(colors.accent)
+          )
+          Spacer(modifier = Modifier.width(6.dp))
+          Text(
+            text = "Google Agenda · thiagovinicius7@gmail.com",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 10.5.sp,
+            color = colors.text
+          )
+        }
+        Text(
+          text = "↻ Sincronizado",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 10.sp,
+          color = colors.accentDark
+        )
       }
     }
 
@@ -259,6 +300,17 @@ private fun AgendaMonthView(
     Spacer(modifier = Modifier.height(12.dp))
     Ruler2dp()
 
+    val dayEvents = events.filter { event ->
+      val eventDate = Instant.ofEpochMilli(event.startEpochMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalDate()
+      eventDate == selectedDate
+    }.sortedBy { it.startEpochMillis }
+
+    val formattedHeader = selectedDate.format(
+      DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("pt", "BR"))
+    ).replaceFirstChar { it.uppercase() }
+
     // Selected Day Agenda details
     Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
       Row(
@@ -266,58 +318,86 @@ private fun AgendaMonthView(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Bottom
       ) {
-        Text(text = "Terça, 2", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = colors.text)
-        Text(text = "3 compromissos · 1 post-it", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, color = colors.textTertiary)
+        Text(text = formattedHeader, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = colors.text)
+        Text(
+          text = if (dayEvents.isEmpty()) "Nenhum compromisso" else "${dayEvents.size} compromisso${if (dayEvents.size > 1) "s" else ""}",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 10.sp,
+          color = colors.textTertiary
+        )
       }
 
       Spacer(modifier = Modifier.height(10.dp))
 
-      // Event 1
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text(text = "08:30", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text, modifier = Modifier.width(44.dp))
-        Text(text = "Planejamento semanal", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, color = colors.text)
-      }
-      Ruler1dp()
+      if (dayEvents.isEmpty()) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCreateEvent)
+            .padding(vertical = 12.dp)
+        ) {
+          Text(
+            text = "+ Nenhum compromisso neste dia. Toque para adicionar.",
+            fontFamily = ArchivoFont,
+            fontSize = 12.sp,
+            color = colors.textTertiary
+          )
+        }
+      } else {
+        dayEvents.forEachIndexed { idx, ev ->
+          val timeStr = Instant.ofEpochMilli(ev.startEpochMillis)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
 
-      // Event 2 (with post-it embed)
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.Top
-      ) {
-        Text(text = "14:00", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.accentDark, modifier = Modifier.width(44.dp))
-        Column {
-          Text(text = "Prova — Cap. 4", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, color = colors.text)
-          Spacer(modifier = Modifier.height(6.dp))
           Row(
             modifier = Modifier
-              .background(colors.postItStudyBg)
-              .padding(horizontal = 9.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
+              .fillMaxWidth()
+              .clickable(onClick = onCreateEvent)
+              .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.Top
           ) {
-            Box(modifier = Modifier.size(9.dp).background(colors.accent))
-            Spacer(modifier = Modifier.width(7.dp))
-            Text(text = "Post-it: “Cap. 4 — anotações”", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.accentPostItText)
+            Text(
+              text = timeStr,
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 12.sp,
+              color = colors.text,
+              modifier = Modifier.width(44.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+              Text(
+                text = ev.title,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Normal,
+                fontSize = 13.sp,
+                color = colors.text
+              )
+              if (ev.attachedNoteTitle != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                  modifier = Modifier
+                    .background(colors.postItStudyBg)
+                    .padding(horizontal = 9.dp, vertical = 7.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Box(modifier = Modifier.size(9.dp).background(colors.accent))
+                  Spacer(modifier = Modifier.width(7.dp))
+                  Text(
+                    text = "Post-it: “${ev.attachedNoteTitle}”",
+                    fontFamily = ArchivoFont,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 11.sp,
+                    color = colors.accentPostItText
+                  )
+                }
+              }
+            }
+          }
+          if (idx < dayEvents.lastIndex) {
+            Ruler1dp()
           }
         }
-      }
-      Ruler1dp()
-
-      // Event 3 (Habit)
-      Row(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        Text(text = "06:30", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, color = colors.text, modifier = Modifier.width(44.dp))
-        Text(text = "Corrida · hábito d65", fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 13.sp, color = colors.textSecondary)
       }
     }
 
@@ -478,27 +558,27 @@ private fun AgendaWeekView(events: List<CalendarEvent>, onCreateEvent: () -> Uni
 @Composable
 private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit) {
   val colors = LocalBlocoColors.current
+  val today = LocalDate.now()
+
+  val todayEvents = events.filter { event ->
+    val eventDate = Instant.ofEpochMilli(event.startEpochMillis)
+      .atZone(ZoneId.systemDefault())
+      .toLocalDate()
+    eventDate == today
+  }
+
+  val hours = listOf("06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22")
 
   Column(modifier = Modifier.fillMaxWidth()) {
-    val dayRows = listOf(
-      Pair("06", listOf(Pair("Corrida · hábito d65", true))),
-      Pair("07", emptyList()),
-      Pair("08", listOf(Pair("Planejamento semanal (08:30 — 09:00)", false))),
-      Pair("09", emptyList()),
-      Pair("10", emptyList()),
-      Pair("11", emptyList()),
-      Pair("12", emptyList()),
-      Pair("13", emptyList()),
-      Pair("14", listOf(Pair("Prova — Cap. 4 (14:00 — 15:00)", false))),
-      Pair("15", emptyList()),
-      Pair("16", emptyList()),
-      Pair("17", emptyList()),
-      Pair("18", emptyList()),
-      Pair("19", listOf(Pair("Aula de inglês (19:30 — 20:30)", false))),
-      Pair("20", emptyList())
-    )
+    for (hourStr in hours) {
+      val hourInt = hourStr.toIntOrNull() ?: 0
+      val hourEvents = todayEvents.filter { ev ->
+        val evHour = Instant.ofEpochMilli(ev.startEpochMillis)
+          .atZone(ZoneId.systemDefault())
+          .hour
+        evHour == hourInt
+      }
 
-    for ((hour, items) in dayRows) {
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -509,7 +589,7 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
         verticalAlignment = Alignment.Top
       ) {
         Text(
-          text = hour,
+          text = hourStr,
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.Bold,
           fontSize = 11.sp,
@@ -517,7 +597,7 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
           modifier = Modifier.width(36.dp)
         )
         Column(modifier = Modifier.weight(1f)) {
-          if (items.isEmpty()) {
+          if (hourEvents.isEmpty()) {
             Text(
               text = "+ toque para adicionar",
               fontFamily = ArchivoFont,
@@ -525,23 +605,32 @@ private fun AgendaDayView(events: List<CalendarEvent>, onCreateEvent: () -> Unit
               fontSize = 11.sp,
               color = colors.textTertiary.copy(alpha = 0.5f)
             )
-          }
-          for ((itemTitle, isHabit) in items) {
-            if (isHabit) {
-              Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(14.dp).border(1.5.dp, colors.text, RectangleShape))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = itemTitle, fontFamily = ArchivoFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = colors.textSecondary)
-              }
-            } else {
+          } else {
+            for (ev in hourEvents) {
+              val timeFormatted = Instant.ofEpochMilli(ev.startEpochMillis)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("HH:mm"))
+
               Row(verticalAlignment = Alignment.Top) {
-                Box(modifier = Modifier.width(4.dp).height(32.dp).background(colors.accent))
+                Box(modifier = Modifier.width(4.dp).height(28.dp).background(colors.accent))
                 Spacer(modifier = Modifier.width(9.dp))
                 Column {
-                  Text(text = itemTitle, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 12.5.sp, color = colors.text)
-                  if (itemTitle.contains("Prova")) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Post-it: Cap. 4 — anotações", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 10.5.sp, color = colors.accentDark)
+                  Text(
+                    text = "${ev.title} ($timeFormatted)",
+                    fontFamily = ArchivoFont,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 12.5.sp,
+                    color = colors.text
+                  )
+                  if (ev.attachedNoteTitle != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                      text = "Post-it: ${ev.attachedNoteTitle}",
+                      fontFamily = ArchivoFont,
+                      fontWeight = FontWeight.SemiBold,
+                      fontSize = 10.5.sp,
+                      color = colors.accentDark
+                    )
                   }
                 }
               }

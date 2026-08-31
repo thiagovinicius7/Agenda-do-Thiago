@@ -65,4 +65,10 @@ interface NoteDao {
 
   @Query("SELECT * FROM notes WHERE title LIKE '%' || :query || '%' OR body LIKE '%' || :query || '%'")
   fun searchNotes(query: String): Flow<List<Note>>
+
+  @Query("DELETE FROM notes")
+  suspend fun clearAllNotes()
+
+  @Query("DELETE FROM note_items")
+  suspend fun clearAllNoteItems()
 }

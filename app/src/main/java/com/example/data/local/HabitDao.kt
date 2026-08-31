@@ -52,4 +52,10 @@ interface HabitDao {
 
   @Query("SELECT * FROM habits WHERE name LIKE '%' || :query || '%'")
   fun searchHabits(query: String): Flow<List<Habit>>
+
+  @Query("DELETE FROM habits")
+  suspend fun clearAllHabits()
+
+  @Query("DELETE FROM habit_marks")
+  suspend fun clearAllHabitMarks()
 }

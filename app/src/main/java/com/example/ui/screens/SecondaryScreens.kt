@@ -201,6 +201,8 @@ fun SettingsScreen(
   isDarkTheme: Boolean,
   onToggleTheme: () -> Unit,
   onBack: () -> Unit,
+  onClearData: (() -> Unit)? = null,
+  onSyncCalendar: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -217,7 +219,7 @@ fun SettingsScreen(
   var autoArchive by remember { mutableStateOf(true) }
   var countInDays by remember { mutableStateOf(true) }
   var weekStart by remember { mutableStateOf("Domingo") }
-  var lastSyncText by remember { mutableStateOf("há poucos segundos") }
+  var lastSyncText by remember { mutableStateOf("agora mesmo") }
   var lastBackupText by remember { mutableStateOf("hoje 06:00") }
 
   // Categories list
@@ -252,6 +254,7 @@ fun SettingsScreen(
   var showExportDialog by remember { mutableStateOf(false) }
   var showBackupDialog by remember { mutableStateOf(false) }
   var showArchiveDialog by remember { mutableStateOf(false) }
+  var showClearDataDialog by remember { mutableStateOf(false) }
 
   Column(
     modifier = modifier
@@ -289,57 +292,145 @@ fun SettingsScreen(
         .weight(1f)
         .verticalScroll(scrollState)
     ) {
-      // User Profile Card
-      Row(
+      // Google Calendar Sync Hero Card
+      Column(
         modifier = Modifier
           .fillMaxWidth()
-          .clickable { showAccountDialog = true }
-          .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
+          .background(colors.canvas)
+          .padding(16.dp)
       ) {
-        Box(
-          modifier = Modifier
-            .size(44.dp)
-            .background(if (isGoogleConnected) colors.text else colors.track),
-          contentAlignment = Alignment.Center
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
         ) {
-          Text(
-            text = userName.firstOrNull()?.uppercase() ?: "T",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 16.sp,
-            color = if (isGoogleConnected) colors.canvas else colors.textTertiary
-          )
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+              modifier = Modifier
+                .size(10.dp)
+                .background(if (isGoogleConnected) colors.accent else colors.textTertiary)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+              text = "GOOGLE AGENDA",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 13.sp,
+              letterSpacing = 0.5.sp,
+              color = colors.text
+            )
+          }
+
+          Box(
+            modifier = Modifier
+              .background(if (isGoogleConnected) colors.accent.copy(alpha = 0.15f) else colors.track)
+              .border(1.dp, if (isGoogleConnected) colors.accent else colors.rulerWeak, RectangleShape)
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+          ) {
+            Text(
+              text = if (isGoogleConnected) "● CONECTADO" else "OFFLINE",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 10.sp,
+              color = if (isGoogleConnected) colors.accentDark else colors.textTertiary
+            )
+          }
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-          Text(
-            text = userName,
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 14.sp,
-            color = colors.text
-          )
-          Text(
-            text = if (isGoogleConnected) "$userEmail · ${activeCalendars.count { it.second }} calendários ativos" else "Modo offline local",
-            fontFamily = ArchivoFont,
-            fontWeight = FontWeight.Normal,
-            fontSize = 11.sp,
-            color = colors.textSecondary
-          )
-        }
-        Box(
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Account Box
+        Row(
           modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
             .clickable { showAccountDialog = true }
-            .padding(8.dp)
+            .padding(12.dp),
+          verticalAlignment = Alignment.CenterVertically
         ) {
+          Box(
+            modifier = Modifier
+              .size(38.dp)
+              .background(colors.text),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = userName.firstOrNull()?.uppercase() ?: "T",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 15.sp,
+              color = colors.canvas
+            )
+          }
+          Spacer(modifier = Modifier.width(10.dp))
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = userName,
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 13.sp,
+              color = colors.text
+            )
+            Text(
+              text = userEmail,
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Normal,
+              fontSize = 11.sp,
+              color = colors.textSecondary
+            )
+          }
           Text(
             text = "Trocar",
             fontFamily = ArchivoFont,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
             fontSize = 11.sp,
             color = colors.accentDark
           )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick Sync & Manage Calendars row
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Box(
+            modifier = Modifier
+              .weight(1f)
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable {
+                lastSyncText = "agora mesmo"
+                onSyncCalendar?.invoke()
+              }
+              .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "↻ Sincronizar Agora",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp,
+              color = colors.text
+            )
+          }
+
+          Box(
+            modifier = Modifier
+              .weight(1f)
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable { showCalendarsDialog = true }
+              .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "Calendários (${activeCalendars.count { it.second }})",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp,
+              color = colors.text
+            )
+          }
         }
       }
 
@@ -362,8 +453,8 @@ fun SettingsScreen(
       }
       Ruler1dp()
 
-      // Group 1: Sincronização
-      Text(text = "SINCRONIZAÇÃO", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
+      // Group 1: Configurações de Sincronização
+      Text(text = "OPÇÕES DE SINCRONIZAÇÃO", style = SectionLabelStyle, color = colors.textTertiary, modifier = Modifier.padding(16.dp, 16.dp, 16.dp, 8.dp))
       
       Row(
         modifier = Modifier
@@ -524,6 +615,22 @@ fun SettingsScreen(
           Text(text = "Salvar cópia completa local", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
         }
         Text(text = "$lastBackupText →", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+      }
+      Ruler1dp()
+
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showClearDataDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column {
+          Text(text = "Limpar dados pré-cadastrados", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.gridFail)
+          Text(text = "Apagar post-its, hábitos e eventos de demonstração", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
+        }
+        Text(text = "Apagar →", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.gridFail)
       }
       Ruler1dp()
       
@@ -839,6 +946,38 @@ fun SettingsScreen(
         onClick = { showArchiveDialog = false },
         modifier = Modifier.fillMaxWidth()
       )
+    }
+  }
+
+  // 9. Clear Data Dialog
+  if (showClearDataDialog) {
+    ModernistSimpleDialog(
+      title = "LIMPAR DADOS",
+      onDismiss = { showClearDataDialog = false }
+    ) {
+      Text(
+        text = "Deseja apagar todos os post-its, hábitos e eventos de demonstração para deixar o aplicativo 100% limpo com seus dados reais?",
+        fontFamily = ArchivoFont,
+        fontSize = 12.5.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(16.dp))
+      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModernistButton(
+          text = "Cancelar",
+          onClick = { showClearDataDialog = false },
+          isPrimary = false,
+          modifier = Modifier.weight(1f)
+        )
+        ModernistButton(
+          text = "Apagar Tudo",
+          onClick = {
+            onClearData?.invoke()
+            showClearDataDialog = false
+          },
+          modifier = Modifier.weight(1f)
+        )
+      }
     }
   }
 }

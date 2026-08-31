@@ -1,10 +1,14 @@
 package com.example
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +27,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +37,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.local.BlocoDatabase
 import com.example.data.model.HabitCalculationResult
@@ -43,6 +50,7 @@ import com.example.data.model.Note
 import com.example.data.model.NoteFormat
 import com.example.data.model.NoteWithItems
 import com.example.data.repository.BlocoRepository
+import com.example.data.repository.CalendarSyncHelper
 import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
 import com.example.ui.screens.AgendaScreen
@@ -75,11 +83,13 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
 
     val database = BlocoDatabase.getDatabase(applicationContext)
+    val syncHelper = CalendarSyncHelper(applicationContext)
     val repository = BlocoRepository(
       noteDao = database.noteDao(),
       habitDao = database.habitDao(),
       calendarDao = database.calendarDao(),
-      syncQueueDao = database.syncQueueDao()
+      syncQueueDao = database.syncQueueDao(),
+      calendarSyncHelper = syncHelper
     )
     val viewModelFactory = BlocoViewModelFactory(repository)
 
@@ -104,6 +114,7 @@ fun BlocoApp(
   isDarkTheme: Boolean,
   onToggleTheme: () -> Unit
 ) {
+  val context = LocalContext.current
   val colors = LocalBlocoColors.current
   val uiState by viewModel.uiState.collectAsState()
 
@@ -111,6 +122,35 @@ fun BlocoApp(
   val habits by viewModel.habitsWithCalculations.collectAsState()
   val events by viewModel.events.collectAsState()
   val syncQueue by viewModel.syncQueue.collectAsState()
+
+  val permissionLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.RequestMultiplePermissions()
+  ) { perms ->
+    val granted = perms[Manifest.permission.READ_CALENDAR] == true
+    if (granted) {
+      viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
+    }
+  }
+
+  LaunchedEffect(Unit) {
+    // Clear preloaded mock/demo data and fetch real device calendars
+    viewModel.clearAllData()
+    val hasPermission = ContextCompat.checkSelfPermission(
+      context,
+      Manifest.permission.READ_CALENDAR
+    ) == PackageManager.PERMISSION_GRANTED
+
+    if (hasPermission) {
+      viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
+    } else {
+      permissionLauncher.launch(
+        arrayOf(
+          Manifest.permission.READ_CALENDAR,
+          Manifest.permission.WRITE_CALENDAR
+        )
+      )
+    }
+  }
 
   // Handle system back button properly
   BackHandler(enabled = uiState.activeOverlay != ActiveOverlay.NONE || uiState.currentSection != TopSection.HOJE) {
@@ -150,6 +190,7 @@ fun BlocoApp(
                 HojeScreen(
                   habits = habits,
                   notes = notes,
+                  events = events,
                   onToggleHabit = { viewModel.toggleHabitDay(it) },
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
                   onOpenNote = { noteId -> viewModel.openNote(noteId) },
@@ -258,7 +299,24 @@ fun BlocoApp(
             SettingsScreen(
               isDarkTheme = isDarkTheme,
               onToggleTheme = onToggleTheme,
-              onBack = { viewModel.closeOverlay() }
+              onBack = { viewModel.closeOverlay() },
+              onClearData = { viewModel.clearAllData() },
+              onSyncCalendar = {
+                val hasPermission = ContextCompat.checkSelfPermission(
+                  context,
+                  Manifest.permission.READ_CALENDAR
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPermission) {
+                  viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
+                } else {
+                  permissionLauncher.launch(
+                    arrayOf(
+                      Manifest.permission.READ_CALENDAR,
+                      Manifest.permission.WRITE_CALENDAR
+                    )
+                  )
+                }
+              }
             )
           }
           ActiveOverlay.ONBOARDING -> {
