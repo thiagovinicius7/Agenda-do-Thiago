@@ -183,6 +183,84 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     }
   }
 
+  fun deleteNote(noteId: String) {
+    viewModelScope.launch {
+      repository.deleteNote(noteId)
+      if (_uiState.value.selectedNoteId == noteId) {
+        closeOverlay()
+      }
+    }
+  }
+
+  fun deleteHabit(habitId: String) {
+    viewModelScope.launch {
+      repository.deleteHabit(habitId)
+      if (_uiState.value.selectedHabitId == habitId) {
+        closeOverlay()
+      }
+    }
+  }
+
+  fun openNoteForEvent(eventId: String) {
+    viewModelScope.launch {
+      val noteId = repository.ensureNoteForEvent(eventId)
+      openNote(noteId)
+    }
+  }
+
+  fun createBackup(context: Context, onDone: ((String) -> Unit)? = null) {
+    viewModelScope.launch {
+      val jsonResult = repository.createBackupJson()
+      val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
+      prefs.edit()
+        .putString("last_backup_json", jsonResult)
+        .putLong("last_backup_time", System.currentTimeMillis())
+        .apply()
+      onDone?.invoke(jsonResult)
+    }
+  }
+
+  fun restoreLastBackup(context: Context, onResult: (String) -> Unit) {
+    val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
+    val savedJson = prefs.getString("last_backup_json", null)
+    if (savedJson.isNullOrBlank()) {
+      onResult("Nenhum backup salvo anteriormente neste aparelho. Gere um backup primeiro.")
+      return
+    }
+    viewModelScope.launch {
+      try {
+        val msg = repository.restoreFromBackupJson(savedJson)
+        onResult(msg)
+      } catch (e: Exception) {
+        onResult("Erro ao restaurar backup: ${e.message}")
+      }
+    }
+  }
+
+  fun restoreFromBackupJson(context: Context, jsonString: String, onResult: (String) -> Unit) {
+    viewModelScope.launch {
+      try {
+        val msg = repository.restoreFromBackupJson(jsonString)
+        val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+          .putString("last_backup_json", jsonString)
+          .putLong("last_backup_time", System.currentTimeMillis())
+          .apply()
+        onResult(msg)
+      } catch (e: Exception) {
+        onResult("Erro no formato do backup: ${e.message}")
+      }
+    }
+  }
+
+  fun getLastBackupInfo(context: Context): String? {
+    val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
+    val time = prefs.getLong("last_backup_time", 0L)
+    if (time == 0L) return null
+    val zdt = java.time.Instant.ofEpochMilli(time).atZone(java.time.ZoneId.systemDefault())
+    return zdt.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", java.util.Locale("pt", "BR")))
+  }
+
   fun updateEvent(
     id: String,
     title: String,

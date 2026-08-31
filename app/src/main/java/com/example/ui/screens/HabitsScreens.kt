@@ -273,6 +273,7 @@ fun HabitDetailScreen(
   onUpdateReminder: (String) -> Unit = {},
   onTestNotification: (String) -> Unit = {},
   onEditRule: () -> Unit,
+  onDeleteHabit: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -284,6 +285,7 @@ fun HabitDetailScreen(
   var reminderActive by remember { mutableStateOf(habit.reminderEnabled && habit.reminderTime != "Desativado") }
   var chosenReminderTime by remember { mutableStateOf(habit.reminderTime.ifBlank { "08:00" }) }
   var reminderSavedMessage by remember { mutableStateOf<String?>(null) }
+  var showDeleteDialog by remember { mutableStateOf(false) }
 
   val todayEpoch = HabitCalculations.todayEpochDay()
   val ptBr = remember { Locale("pt", "BR") }
@@ -771,13 +773,13 @@ fun HabitDetailScreen(
       Spacer(modifier = Modifier.height(20.dp))
     }
 
-    // Bottom action row: "Marcar hoje" + "Editar regra"
+    // Bottom action row: "Marcar hoje" + "Editar regra" + "Excluir"
     Ruler2dp()
     Row(
       modifier = Modifier
         .fillMaxWidth()
         .padding(horizontal = 16.dp, vertical = 12.dp),
-      horizontalArrangement = Arrangement.spacedBy(2.dp)
+      horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
       Box(
         modifier = Modifier
@@ -804,13 +806,78 @@ fun HabitDetailScreen(
         contentAlignment = Alignment.Center
       ) {
         Text(
-          text = "Editar regra",
+          text = "Regra",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 13.sp,
           color = colors.text
         )
       }
+
+      if (onDeleteHabit != null) {
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.gridFail, RectangleShape)
+            .clickable { showDeleteDialog = true }
+            .padding(14.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "Excluir",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = colors.gridFail
+          )
+        }
+      }
+    }
+
+    if (showDeleteDialog) {
+      androidx.compose.material3.AlertDialog(
+        onDismissRequest = { showDeleteDialog = false },
+        title = {
+          Text(
+            text = "EXCLUIR HÁBITO",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 15.sp,
+            color = colors.gridFail
+          )
+        },
+        text = {
+          Text(
+            text = "Tem certeza que deseja apagar o hábito \"${habit.name}\"? Todo o histórico de dias e marcas será apagado permanentemente.",
+            fontFamily = ArchivoFont,
+            fontSize = 13.sp,
+            color = colors.text
+          )
+        },
+        confirmButton = {
+          Text(
+            text = "Excluir",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = colors.gridFail,
+            modifier = Modifier.clickable {
+              showDeleteDialog = false
+              onDeleteHabit?.invoke(habit.id)
+            }.padding(8.dp)
+          )
+        },
+        dismissButton = {
+          Text(
+            text = "Cancelar",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable { showDeleteDialog = false }.padding(8.dp)
+          )
+        },
+        shape = RectangleShape,
+        containerColor = colors.canvas
+      )
     }
   }
 }

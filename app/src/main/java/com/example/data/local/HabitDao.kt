@@ -50,6 +50,9 @@ interface HabitDao {
   @Query("DELETE FROM habit_marks WHERE habitId = :habitId AND dateEpochDay = :dateEpochDay")
   suspend fun deleteMark(habitId: String, dateEpochDay: Long)
 
+  @Query("DELETE FROM habit_marks WHERE habitId = :habitId")
+  suspend fun deleteMarksForHabit(habitId: String)
+
   @Query("SELECT * FROM habits WHERE name LIKE '%' || :query || '%'")
   fun searchHabits(query: String): Flow<List<Habit>>
 

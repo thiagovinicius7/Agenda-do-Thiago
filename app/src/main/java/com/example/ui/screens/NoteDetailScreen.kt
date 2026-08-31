@@ -34,6 +34,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import android.content.Context
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.CalendarEvent
@@ -57,9 +60,11 @@ fun NoteDetailScreen(
   onBack: () -> Unit,
   onSave: (id: String?, title: String, body: String, categoryId: String, format: NoteFormat, items: List<String>, attachedEventId: String?, attachedEventSummary: String?, attachedDate: String?) -> Unit,
   onToggleItem: (String, Boolean) -> Unit,
+  onDelete: ((String) -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
+  val context = LocalContext.current
   val scrollState = rememberScrollState()
 
   var title by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.title ?: "") }
@@ -70,6 +75,7 @@ fun NoteDetailScreen(
   var newItemText by remember { mutableStateOf("") }
   var showMoreMenu by remember { mutableStateOf(false) }
   var showEventPicker by remember { mutableStateOf(false) }
+  var showDeleteConfirmation by remember { mutableStateOf(false) }
 
   // Attached event state (null by default for free unlinked notes)
   var attachedEventId by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.attachedEventId) }
@@ -88,6 +94,51 @@ fun NoteDetailScreen(
 
   val totalItems = existingItems.size + extraItems.size
   val doneCount = existingItems.count { it.isDone }
+
+  fun formatNoteForWhatsApp(): String {
+    val sb = StringBuilder()
+    sb.append("📌 *${title.ifBlank { "Bloco T · Nota" }}*\n")
+    sb.append("🏷️ Categoria: ${selectedCategory.replaceFirstChar { it.uppercase() }}\n")
+    if (!attachedDate.isNullOrBlank()) {
+      sb.append("📅 Data: $attachedDate\n")
+    }
+    if (!attachedEventSummary.isNullOrBlank()) {
+      sb.append("📍 Compromisso: $attachedEventSummary\n")
+    }
+    sb.append("\n")
+    if (body.isNotBlank()) {
+      sb.append("${body.trim()}\n\n")
+    }
+    val allItemsList = existingItems.map { Pair(it.text, it.isDone) } + extraItems.map { Pair(it, false) }
+    if (allItemsList.isNotEmpty()) {
+      sb.append("*Checklist:*\n")
+      allItemsList.forEach { (text, isDone) ->
+        val check = if (isDone) "☑️" else "◻️"
+        sb.append("$check $text\n")
+      }
+      sb.append("\n")
+    }
+    sb.append("— _Compartilhado via Bloco T_")
+    return sb.toString()
+  }
+
+  fun shareOnWhatsApp() {
+    val textToShare = formatNoteForWhatsApp()
+    try {
+      val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, textToShare)
+        setPackage("com.whatsapp")
+      }
+      context.startActivity(intent)
+    } catch (e: Exception) {
+      val fallbackIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, textToShare)
+      }
+      context.startActivity(Intent.createChooser(fallbackIntent, "Compartilhar nota"))
+    }
+  }
 
   Column(
     modifier = modifier
@@ -121,16 +172,27 @@ fun NoteDetailScreen(
         )
       }
       Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
       ) {
-        Text(
-          text = if (noteWithItems != null) "Editando" else "Novo",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.SemiBold,
-          fontSize = 10.sp,
-          color = colors.textTertiary
-        )
+        // WhatsApp Share button in top bar
+        Box(
+          modifier = Modifier
+            .border(1.dp, Color(0xFF25D366), RectangleShape)
+            .background(Color(0xFF25D366).copy(alpha = 0.12f))
+            .clickable { shareOnWhatsApp() }
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "💬 WhatsApp",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.5.sp,
+            color = colors.text
+          )
+        }
+
         Box(
           modifier = Modifier
             .size(32.dp)
@@ -157,6 +219,17 @@ fun NoteDetailScreen(
         },
         text = {
           Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+              text = "💬 Compartilhar formatado no WhatsApp",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 14.sp,
+              color = Color(0xFF1E7E34),
+              modifier = Modifier.fillMaxWidth().clickable {
+                showMoreMenu = false
+                shareOnWhatsApp()
+              }.padding(vertical = 6.dp)
+            )
             Text(
               text = if (isPinned) "Desafixar do topo" else "Fixar no topo",
               fontFamily = ArchivoFont,
@@ -192,6 +265,19 @@ fun NoteDetailScreen(
                 }.padding(vertical = 6.dp)
               )
             }
+            if (noteWithItems != null && onDelete != null) {
+              Text(
+                text = "🗑️ Excluir post-it",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = colors.gridFail,
+                modifier = Modifier.fillMaxWidth().clickable {
+                  showMoreMenu = false
+                  showDeleteConfirmation = true
+                }.padding(vertical = 6.dp)
+              )
+            }
           }
         },
         confirmButton = {
@@ -201,6 +287,53 @@ fun NoteDetailScreen(
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
             modifier = Modifier.clickable { showMoreMenu = false }.padding(8.dp)
+          )
+        },
+        shape = RectangleShape,
+        containerColor = colors.canvas
+      )
+    }
+
+    if (showDeleteConfirmation) {
+      AlertDialog(
+        onDismissRequest = { showDeleteConfirmation = false },
+        title = {
+          Text(
+            text = "EXCLUIR POST-IT",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 15.sp,
+            color = colors.gridFail
+          )
+        },
+        text = {
+          Text(
+            text = "Tem certeza que deseja apagar \"${title.ifBlank { "esta nota" }}\"? Esta ação não pode ser desfeita.",
+            fontFamily = ArchivoFont,
+            fontSize = 13.sp,
+            color = colors.text
+          )
+        },
+        confirmButton = {
+          Text(
+            text = "Excluir",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = colors.gridFail,
+            modifier = Modifier.clickable {
+              showDeleteConfirmation = false
+              noteWithItems?.note?.id?.let { onDelete?.invoke(it) }
+            }.padding(8.dp)
+          )
+        },
+        dismissButton = {
+          Text(
+            text = "Cancelar",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable { showDeleteConfirmation = false }.padding(8.dp)
           )
         },
         shape = RectangleShape,
@@ -720,6 +853,24 @@ fun NoteDetailScreen(
           fontSize = 13.sp,
           color = if (isPinned) colors.canvas else colors.text
         )
+      }
+
+      if (noteWithItems != null && onDelete != null) {
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.gridFail, RectangleShape)
+            .clickable { showDeleteConfirmation = true }
+            .padding(14.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "Excluir",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = colors.gridFail
+          )
+        }
       }
     }
   }
