@@ -266,6 +266,18 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     }
   }
 
+  fun toggleCalendarSelection(calendarId: String) {
+    viewModelScope.launch {
+      repository.toggleCalendarSelection(calendarId)
+    }
+  }
+
+  fun updateCalendarSelection(calendarId: String, isSelected: Boolean) {
+    viewModelScope.launch {
+      repository.updateCalendarSelection(calendarId, isSelected)
+    }
+  }
+
   fun clearAllData() {
     viewModelScope.launch {
       repository.clearAllPreloadedData()

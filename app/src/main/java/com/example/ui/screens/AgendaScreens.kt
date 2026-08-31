@@ -793,6 +793,7 @@ private fun AgendaDayView(
 
 @Composable
 fun EventCreateScreen(
+  calendars: List<GoogleCalendar> = emptyList(),
   onBack: () -> Unit,
   onSave: (title: String, calendarId: String, date: LocalDate, hour: Int, minute: Int, duration: Int, noteId: String?, noteTitle: String?, localOnly: Boolean) -> Unit,
   modifier: Modifier = Modifier
@@ -801,7 +802,9 @@ fun EventCreateScreen(
   val scrollState = rememberScrollState()
 
   var title by remember { mutableStateOf("") }
-  var selectedCalendar by remember { mutableStateOf("cal_pessoal") }
+  var selectedCalendar by remember {
+    mutableStateOf(calendars.firstOrNull { it.isSelected }?.id ?: "cal_pessoal")
+  }
   val today = remember { LocalDate.now() }
   var selectedDate by remember { mutableStateOf(today) }
   var selectedHour by remember { mutableStateOf(14) }
@@ -972,22 +975,28 @@ fun EventCreateScreen(
       // Salvar em qual calendário
       Text(text = "SALVAR EM QUAL CALENDÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(8.dp))
+      val displayCalendars = if (calendars.isNotEmpty()) calendars else listOf(
+        GoogleCalendar("cal_pessoal", "Pessoal", "thiagovinicius7@gmail.com", "#EC3013", isPrimary = true, isSelected = true),
+        GoogleCalendar("cal_trabalho", "Trabalho", "thiagovinicius7@gmail.com", "#201E1D", isPrimary = false, isSelected = true)
+      )
       Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
-        CalendarOptionRow(
-          name = "Pessoal (Google)",
-          email = "thiagovinicius7@gmail.com",
-          color = colors.accent,
-          isSelected = selectedCalendar == "cal_pessoal",
-          onClick = { selectedCalendar = "cal_pessoal" }
-        )
-        Ruler1dp()
-        CalendarOptionRow(
-          name = "Trabalho (Google)",
-          email = "thiagovinicius7@gmail.com",
-          color = colors.text,
-          isSelected = selectedCalendar == "cal_trabalho",
-          onClick = { selectedCalendar = "cal_trabalho" }
-        )
+        displayCalendars.forEachIndexed { idx, cal ->
+          val color = try {
+            Color(android.graphics.Color.parseColor(cal.colorHex))
+          } catch (e: Exception) {
+            colors.accent
+          }
+          CalendarOptionRow(
+            name = "${cal.name} (Google)",
+            email = cal.accountEmail,
+            color = color,
+            isSelected = selectedCalendar == cal.id,
+            onClick = { selectedCalendar = cal.id }
+          )
+          if (idx < displayCalendars.lastIndex) {
+            Ruler1dp()
+          }
+        }
       }
 
       Spacer(modifier = Modifier.height(20.dp))

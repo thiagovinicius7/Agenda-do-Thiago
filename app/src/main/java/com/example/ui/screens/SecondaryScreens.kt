@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.GoogleCalendar
 import com.example.data.model.HabitCalculationResult
 import com.example.data.model.NoteWithItems
 import com.example.ui.components.HabitGrid
@@ -201,6 +202,8 @@ fun SettingsScreen(
   isDarkTheme: Boolean,
   onToggleTheme: () -> Unit,
   onBack: () -> Unit,
+  calendars: List<GoogleCalendar> = emptyList(),
+  onToggleCalendar: ((String) -> Unit)? = null,
   onClearData: (() -> Unit)? = null,
   onSyncCalendar: (() -> Unit)? = null,
   modifier: Modifier = Modifier
@@ -233,17 +236,12 @@ fun SettingsScreen(
     )
   }
 
-  // Calendars
-  var activeCalendars by remember {
-    mutableStateOf(
-      listOf(
-        Pair("Pessoal", true),
-        Pair("Trabalho", true),
-        Pair("Faculdade", false),
-        Pair("Feriados no Brasil", true)
-      )
-    )
-  }
+  val displayCalendars = if (calendars.isNotEmpty()) calendars else listOf(
+    GoogleCalendar("cal_pessoal", "Pessoal", "thiagovinicius7@gmail.com", "#EC3013", isPrimary = true, isSelected = true),
+    GoogleCalendar("cal_trabalho", "Trabalho", "thiagovinicius7@gmail.com", "#201E1D", isPrimary = false, isSelected = true),
+    GoogleCalendar("cal_faculdade", "Faculdade / Cursos", "thiagovinicius7@gmail.com", "#3277DB", isPrimary = false, isSelected = true),
+    GoogleCalendar("cal_feriados", "Feriados no Brasil", "pt.brazilian#holiday@group.v.calendar.google.com", "#529E72", isPrimary = false, isSelected = true)
+  )
 
   // Dialog States
   var showAccountDialog by remember { mutableStateOf(false) }
@@ -424,7 +422,7 @@ fun SettingsScreen(
             contentAlignment = Alignment.Center
           ) {
             Text(
-              text = "Calendários (${activeCalendars.count { it.second }})",
+              text = "Calendários (${displayCalendars.count { it.isSelected }})",
               fontFamily = ArchivoFont,
               fontWeight = FontWeight.Bold,
               fontSize = 11.5.sp,
@@ -467,7 +465,7 @@ fun SettingsScreen(
         Column(modifier = Modifier.weight(1f)) {
           Text(text = "Calendários do Google", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
           Text(
-            text = activeCalendars.filter { it.second }.joinToString(", ") { it.first }.ifEmpty { "Nenhum ativo" },
+            text = displayCalendars.filter { it.isSelected }.joinToString(", ") { it.name }.ifEmpty { "Nenhum ativo" },
             fontFamily = ArchivoFont,
             fontSize = 10.5.sp,
             color = colors.textSecondary
@@ -764,30 +762,38 @@ fun SettingsScreen(
       Text("Selecione quais calendários exibir na Agenda:", fontFamily = ArchivoFont, fontSize = 11.5.sp, color = colors.textSecondary)
       Spacer(modifier = Modifier.height(10.dp))
       Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
-        activeCalendars.forEachIndexed { idx, (calName, isChecked) ->
+        displayCalendars.forEachIndexed { idx, cal ->
+          val calColor = try {
+            Color(android.graphics.Color.parseColor(cal.colorHex))
+          } catch (e: Exception) {
+            colors.accent
+          }
           Row(
             modifier = Modifier
               .fillMaxWidth()
               .clickable {
-                activeCalendars = activeCalendars.toMutableList().also {
-                  it[idx] = Pair(calName, !isChecked)
-                }
+                onToggleCalendar?.invoke(cal.id)
               }
               .padding(10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
-            Text(text = calName, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = colors.text)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+              Box(modifier = Modifier.size(8.dp).background(calColor))
+              Spacer(modifier = Modifier.width(8.dp))
+              Column {
+                Text(text = cal.name, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = colors.text)
+                Text(text = cal.accountEmail, fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.sp, color = colors.textSecondary)
+              }
+            }
             ModernistCheckbox(
-              checked = isChecked,
+              checked = cal.isSelected,
               onCheckedChange = {
-                activeCalendars = activeCalendars.toMutableList().also { list ->
-                  list[idx] = Pair(calName, !isChecked)
-                }
+                onToggleCalendar?.invoke(cal.id)
               }
             )
           }
-          if (idx < activeCalendars.lastIndex) {
+          if (idx < displayCalendars.lastIndex) {
             Ruler1dp()
           }
         }

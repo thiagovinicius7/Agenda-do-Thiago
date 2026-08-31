@@ -121,6 +121,7 @@ fun BlocoApp(
   val notes by viewModel.notesWithItems.collectAsState()
   val habits by viewModel.habitsWithCalculations.collectAsState()
   val events by viewModel.events.collectAsState()
+  val calendars by viewModel.calendars.collectAsState()
   val syncQueue by viewModel.syncQueue.collectAsState()
 
   val permissionLauncher = rememberLauncherForActivityResult(
@@ -272,6 +273,7 @@ fun BlocoApp(
           }
           ActiveOverlay.EVENT_CREATE -> {
             EventCreateScreen(
+              calendars = calendars,
               onBack = { viewModel.closeOverlay() },
               onSave = { title, calId, date, hour, min, dur, noteId, noteTitle, localOnly ->
                 viewModel.saveEvent(title, calId, date, hour, min, dur, noteId, noteTitle, localOnly)
@@ -298,6 +300,8 @@ fun BlocoApp(
               isDarkTheme = isDarkTheme,
               onToggleTheme = onToggleTheme,
               onBack = { viewModel.closeOverlay() },
+              calendars = calendars,
+              onToggleCalendar = { calId -> viewModel.toggleCalendarSelection(calId) },
               onClearData = { viewModel.clearAllData() },
               onSyncCalendar = {
                 val hasPermission = ContextCompat.checkSelfPermission(
