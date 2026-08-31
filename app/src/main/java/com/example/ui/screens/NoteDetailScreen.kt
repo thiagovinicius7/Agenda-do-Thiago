@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.CalendarEvent
 import com.example.data.model.NoteFormat
 import com.example.data.model.NoteWithItems
 import com.example.ui.components.ModernistCheckbox
@@ -43,25 +45,36 @@ import com.example.ui.components.Ruler2dp
 import com.example.ui.theme.ArchivoFont
 import com.example.ui.theme.LocalBlocoColors
 import com.example.ui.theme.SectionLabelStyle
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun NoteDetailScreen(
   noteWithItems: NoteWithItems?,
+  events: List<CalendarEvent> = emptyList(),
   onBack: () -> Unit,
-  onSave: (id: String?, title: String, body: String, categoryId: String, format: NoteFormat, items: List<String>) -> Unit,
+  onSave: (id: String?, title: String, body: String, categoryId: String, format: NoteFormat, items: List<String>, attachedEventId: String?, attachedEventSummary: String?, attachedDate: String?) -> Unit,
   onToggleItem: (String, Boolean) -> Unit,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
-  var title by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.title ?: "Nova nota") }
+  var title by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.title ?: "") }
   var body by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.body ?: "") }
   var selectedCategory by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.categoryId ?: "trabalho") }
-  var format by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.format ?: NoteFormat.CHECKLIST) }
+  var format by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.format ?: NoteFormat.NOTE) }
   var isPinned by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.isPinned ?: false) }
   var newItemText by remember { mutableStateOf("") }
   var showMoreMenu by remember { mutableStateOf(false) }
+  var showEventPicker by remember { mutableStateOf(false) }
+
+  // Attached event state (null by default for free unlinked notes)
+  var attachedEventId by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.attachedEventId) }
+  var attachedEventSummary by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.attachedEventSummary) }
+  var attachedDate by remember(noteWithItems) { mutableStateOf(noteWithItems?.note?.attachedDate) }
 
   val existingItems = noteWithItems?.items ?: emptyList()
   val extraItems = remember { mutableStateListOf<String>() }
@@ -100,7 +113,7 @@ fun NoteDetailScreen(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-          text = "POST-IT",
+          text = if (format == NoteFormat.CHECKLIST) "CHECKLIST" else "POST-IT / NOTA",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 12.sp,
@@ -112,7 +125,7 @@ fun NoteDetailScreen(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(
-          text = "Salvo agora",
+          text = if (noteWithItems != null) "Editando" else "Novo",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.SemiBold,
           fontSize = 10.sp,
@@ -155,7 +168,7 @@ fun NoteDetailScreen(
               }.padding(vertical = 6.dp)
             )
             Text(
-              text = "Alternar para ${if (format == NoteFormat.CHECKLIST) "Texto simples" else "Checklist"}",
+              text = "Mudar para ${if (format == NoteFormat.CHECKLIST) "Texto simples" else "Checklist"}",
               fontFamily = ArchivoFont,
               fontWeight = FontWeight.Bold,
               fontSize = 14.sp,
@@ -164,16 +177,21 @@ fun NoteDetailScreen(
                 showMoreMenu = false
               }.padding(vertical = 6.dp)
             )
-            Text(
-              text = "Arquivar post-it",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Bold,
-              fontSize = 14.sp,
-              modifier = Modifier.fillMaxWidth().clickable {
-                showMoreMenu = false
-                onBack()
-              }.padding(vertical = 6.dp)
-            )
+            if (attachedEventId != null) {
+              Text(
+                text = "✕ Desvincular de evento da agenda",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = colors.accentDark,
+                modifier = Modifier.fillMaxWidth().clickable {
+                  attachedEventId = null
+                  attachedEventSummary = null
+                  attachedDate = null
+                  showMoreMenu = false
+                }.padding(vertical = 6.dp)
+              )
+            }
           }
         },
         confirmButton = {
@@ -183,6 +201,108 @@ fun NoteDetailScreen(
             fontWeight = FontWeight.Bold,
             fontSize = 13.sp,
             modifier = Modifier.clickable { showMoreMenu = false }.padding(8.dp)
+          )
+        },
+        shape = RectangleShape,
+        containerColor = colors.canvas
+      )
+    }
+
+    // Event Picker Dialog
+    if (showEventPicker) {
+      AlertDialog(
+        onDismissRequest = { showEventPicker = false },
+        title = {
+          Text(text = "Vincular a compromisso", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+        },
+        text = {
+          Column(
+            modifier = Modifier
+              .fillMaxWidth()
+              .heightIn(max = 340.dp)
+              .verticalScroll(rememberScrollState())
+          ) {
+            Text(
+              text = "Selecione um evento da sua agenda ou mantenha livre:",
+              fontFamily = ArchivoFont,
+              fontSize = 12.sp,
+              color = colors.textSecondary
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Option 1: No event (Free Note)
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable {
+                  attachedEventId = null
+                  attachedEventSummary = null
+                  attachedDate = null
+                  showEventPicker = false
+                }
+                .padding(10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              Text(
+                text = "✕ Sem vínculo (Nota Livre / Post-it Solto)",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = colors.text
+              )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (events.isEmpty()) {
+              Text(
+                text = "Nenhum evento encontrado na agenda.",
+                fontFamily = ArchivoFont,
+                fontSize = 11.5.sp,
+                color = colors.textTertiary,
+                modifier = Modifier.padding(vertical = 8.dp)
+              )
+            } else {
+              events.forEach { ev ->
+                val timeStr = remember(ev.startEpochMillis) {
+                  val zdt = Instant.ofEpochMilli(ev.startEpochMillis).atZone(ZoneId.systemDefault())
+                  val fmt = DateTimeFormatter.ofPattern("EEE, d MMM · HH:mm", Locale("pt", "BR"))
+                  zdt.format(fmt)
+                }
+                Row(
+                  modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .border(1.dp, if (attachedEventId == ev.id) colors.accent else colors.rulerWeak, RectangleShape)
+                    .background(if (attachedEventId == ev.id) colors.accent.copy(alpha = 0.08f) else Color.Transparent)
+                    .clickable {
+                      attachedEventId = ev.id
+                      attachedEventSummary = ev.title
+                      attachedDate = timeStr
+                      showEventPicker = false
+                    }
+                    .padding(10.dp),
+                  verticalAlignment = Alignment.CenterVertically
+                ) {
+                  Box(modifier = Modifier.size(6.dp).background(colors.accent))
+                  Spacer(modifier = Modifier.width(8.dp))
+                  Column {
+                    Text(text = ev.title, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = colors.text)
+                    Text(text = timeStr, fontFamily = ArchivoFont, fontSize = 10.sp, color = colors.textSecondary)
+                  }
+                }
+              }
+            }
+          }
+        },
+        confirmButton = {
+          Text(
+            text = "Cancelar",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable { showEventPicker = false }.padding(8.dp)
           )
         },
         shape = RectangleShape,
@@ -218,25 +338,77 @@ fun NoteDetailScreen(
 
           Spacer(modifier = Modifier.height(12.dp))
 
-          // Editable Title with Cursor
+          // Format selector (Texto / Checklist)
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .border(1.dp, if (format == NoteFormat.NOTE) colors.text else colors.rulerStrong, RectangleShape)
+                .background(if (format == NoteFormat.NOTE) colors.text else Color.Transparent)
+                .clickable { format = NoteFormat.NOTE }
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+              Text(
+                text = "Texto livre",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = if (format == NoteFormat.NOTE) colors.canvas else colors.text
+              )
+            }
+
+            Box(
+              modifier = Modifier
+                .border(1.dp, if (format == NoteFormat.CHECKLIST) colors.text else colors.rulerStrong, RectangleShape)
+                .background(if (format == NoteFormat.CHECKLIST) colors.text else Color.Transparent)
+                .clickable { format = NoteFormat.CHECKLIST }
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+              Text(
+                text = "Checklist",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = if (format == NoteFormat.CHECKLIST) colors.canvas else colors.text
+              )
+            }
+          }
+
+          Spacer(modifier = Modifier.height(12.dp))
+
+          // Editable Title with Cursor & Placeholder
           BasicTextField(
             value = title,
             onValueChange = { title = it },
             textStyle = TextStyle(
               fontFamily = ArchivoFont,
               fontWeight = FontWeight.ExtraBold,
-              fontSize = 28.sp,
-              lineHeight = 30.sp,
+              fontSize = 24.sp,
+              lineHeight = 28.sp,
               letterSpacing = (-0.02).sp,
               color = colors.text
             ),
+            decorationBox = { innerTextField ->
+              if (title.isEmpty()) {
+                Text(
+                  text = "Título do post-it / nota...",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.ExtraBold,
+                  fontSize = 24.sp,
+                  color = colors.textSecondary.copy(alpha = 0.6f)
+                )
+              }
+              innerTextField()
+            },
             cursorBrush = SolidColor(colors.accent),
             modifier = Modifier.fillMaxWidth()
           )
 
-          Spacer(modifier = Modifier.height(10.dp))
+          Spacer(modifier = Modifier.height(8.dp))
           Text(
-            text = if (format == NoteFormat.CHECKLIST) "CHECKLIST · $doneCount DE $totalItems" else "NOTA",
+            text = if (format == NoteFormat.CHECKLIST) "CHECKLIST · $doneCount DE $totalItems CONCLUÍDOS" else "POST-IT LIVRE",
             style = SectionLabelStyle,
             color = colors.accentPostItText
           )
@@ -245,182 +417,139 @@ fun NoteDetailScreen(
 
       Ruler2dp()
 
-      // Checklist items
-      Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        for (item in existingItems) {
+      // Format: Checklist items
+      if (format == NoteFormat.CHECKLIST) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+          for (item in existingItems) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggleItem(item.id, item.isDone) }
+                .padding(vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              ModernistCheckbox(
+                checked = item.isDone,
+                onCheckedChange = { onToggleItem(item.id, item.isDone) },
+                size = 20.dp
+              )
+              Spacer(modifier = Modifier.width(12.dp))
+              Text(
+                text = item.text,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Normal,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                color = colors.text,
+                textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
+              )
+            }
+            Ruler1dp()
+          }
+
+          for (text in extraItems) {
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              ModernistCheckbox(
+                checked = false,
+                onCheckedChange = {},
+                size = 20.dp
+              )
+              Spacer(modifier = Modifier.width(12.dp))
+              Text(
+                text = text,
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Normal,
+                fontSize = 14.sp,
+                lineHeight = 18.sp,
+                color = colors.text
+              )
+            }
+            Ruler1dp()
+          }
+
+          // Add new item row
           Row(
             modifier = Modifier
               .fillMaxWidth()
-              .clickable { onToggleItem(item.id, item.isDone) }
-              .padding(vertical = 12.dp),
+              .padding(vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
           ) {
-            ModernistCheckbox(
-              checked = item.isDone,
-              onCheckedChange = { onToggleItem(item.id, item.isDone) },
-              size = 20.dp
+            Box(
+              modifier = Modifier
+                .size(20.dp)
+                .border(1.5.dp, colors.rulerStrong, RectangleShape)
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Text(
-              text = item.text,
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Normal,
-              fontSize = 14.sp,
-              lineHeight = 18.sp,
-              color = colors.text,
-              textDecoration = if (item.isDone) TextDecoration.LineThrough else TextDecoration.None
+            BasicTextField(
+              value = newItemText,
+              onValueChange = { newItemText = it },
+              textStyle = TextStyle(
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Normal,
+                fontSize = 14.sp,
+                color = colors.text
+              ),
+              decorationBox = { innerTextField ->
+                if (newItemText.isEmpty()) {
+                  Text(
+                    text = "Novo item da lista...",
+                    fontFamily = ArchivoFont,
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 14.sp,
+                    color = colors.textTertiary
+                  )
+                }
+                innerTextField()
+              },
+              modifier = Modifier.weight(1f)
             )
-          }
-          Ruler1dp()
-        }
-
-        for (text in extraItems) {
-          Row(
-            modifier = Modifier
-              .fillMaxWidth()
-              .padding(vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-          ) {
-            ModernistCheckbox(
-              checked = false,
-              onCheckedChange = {},
-              size = 20.dp
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-              text = text,
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Normal,
-              fontSize = 14.sp,
-              lineHeight = 18.sp,
-              color = colors.text
-            )
-          }
-          Ruler1dp()
-        }
-
-        // Add new item row
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Box(
-            modifier = Modifier
-              .size(20.dp)
-              .border(1.5.dp, colors.rulerStrong, RectangleShape)
-          )
-          Spacer(modifier = Modifier.width(12.dp))
-          BasicTextField(
-            value = newItemText,
-            onValueChange = { newItemText = it },
-            textStyle = TextStyle(
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Normal,
-              fontSize = 14.sp,
-              color = colors.text
-            ),
-            decorationBox = { innerTextField ->
-              if (newItemText.isEmpty()) {
-                Text(
-                  text = "Novo item (digite e aperte enter)",
-                  fontFamily = ArchivoFont,
-                  fontWeight = FontWeight.Normal,
-                  fontSize = 14.sp,
-                  color = colors.textTertiary
-                )
-              }
-              innerTextField()
-            },
-            modifier = Modifier.weight(1f)
-          )
-          if (newItemText.isNotBlank()) {
-            Text(
-              text = "+ Adicionar",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Bold,
-              fontSize = 12.sp,
-              color = colors.accent,
-              modifier = Modifier.clickable {
-                extraItems.add(newItemText)
-                newItemText = ""
-              }
-            )
+            if (newItemText.isNotBlank()) {
+              Text(
+                text = "+ Adicionar",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = colors.accent,
+                modifier = Modifier.clickable {
+                  extraItems.add(newItemText.trim())
+                  newItemText = ""
+                }
+              )
+            }
           }
         }
+      }
 
-        Spacer(modifier = Modifier.height(14.dp))
-        Ruler2dp()
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Attached to Calendar Card
+      // Note Body / Observações
+      Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Text(
-          text = "ANEXADO À AGENDA",
+          text = if (format == NoteFormat.CHECKLIST) "OBSERVAÇÕES / TEXTO" else "CONTEÚDO DA NOTA",
           style = SectionLabelStyle,
           color = colors.textTertiary
         )
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.rulerStrong, RectangleShape)
-            .padding(12.dp),
-          verticalAlignment = Alignment.CenterVertically
-        ) {
-          Box(
-            modifier = Modifier
-              .width(4.dp)
-              .height(34.dp)
-              .background(colors.accent)
-          )
-          Spacer(modifier = Modifier.width(12.dp))
-          Column {
-            Text(
-              text = "Sex, 30 ago · 15:00",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.ExtraBold,
-              fontSize = 12.sp,
-              lineHeight = 14.sp,
-              color = colors.text
-            )
-            Text(
-              text = "Reunião cliente — Trabalho (Google)",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Normal,
-              fontSize = 12.sp,
-              lineHeight = 15.sp,
-              color = colors.textSecondary
-            )
-          }
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Note Body
-        Text(
-          text = "NOTA",
-          style = SectionLabelStyle,
-          color = colors.textTertiary
-        )
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         BasicTextField(
           value = body,
           onValueChange = { body = it },
           textStyle = TextStyle(
             fontFamily = ArchivoFont,
             fontWeight = FontWeight.Normal,
-            fontSize = 13.5.sp,
-            lineHeight = 20.sp,
+            fontSize = 14.sp,
+            lineHeight = 21.sp,
             color = colors.text
           ),
           decorationBox = { inner ->
             if (body.isEmpty()) {
               Text(
-                text = "Adicionar observações...",
+                text = "Escreva seus pensamentos, detalhes ou observações livremente...",
                 fontFamily = ArchivoFont,
                 fontWeight = FontWeight.Normal,
-                fontSize = 13.5.sp,
+                fontSize = 14.sp,
                 color = colors.textTertiary
               )
             }
@@ -428,8 +557,114 @@ fun NoteDetailScreen(
           },
           modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 20.dp)
+            .heightIn(min = 100.dp)
+            .background(colors.track)
+            .padding(12.dp)
         )
+      }
+
+      Ruler1dp()
+
+      // Dynamic Attached to Calendar Section
+      Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "VÍNCULO COM A AGENDA",
+            style = SectionLabelStyle,
+            color = colors.textTertiary
+          )
+          Text(
+            text = if (attachedEventId != null) "Alterar" else "+ Vincular a evento",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = colors.accentDark,
+            modifier = Modifier.clickable { showEventPicker = true }
+          )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (attachedEventId != null) {
+          // Has attached event
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.accent, RectangleShape)
+              .background(colors.accent.copy(alpha = 0.05f))
+              .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+              Box(
+                modifier = Modifier
+                  .width(4.dp)
+                  .height(34.dp)
+                  .background(colors.accent)
+              )
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = attachedDate ?: "Data agendada",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.ExtraBold,
+                  fontSize = 11.5.sp,
+                  color = colors.text
+                )
+                Text(
+                  text = attachedEventSummary ?: "Compromisso vinculado",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Normal,
+                  fontSize = 12.sp,
+                  color = colors.textSecondary
+                )
+              }
+            }
+            Text(
+              text = "✕ Desvincular",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = colors.accentDark,
+              modifier = Modifier
+                .clickable {
+                  attachedEventId = null
+                  attachedEventSummary = null
+                  attachedDate = null
+                }
+                .padding(4.dp)
+            )
+          }
+        } else {
+          // Free note / No event
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "Nota livre (sem evento vinculado na agenda)",
+              fontFamily = ArchivoFont,
+              fontSize = 12.sp,
+              color = colors.textSecondary
+            )
+            Text(
+              text = "+ Vincular",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = colors.accentDark,
+              modifier = Modifier.clickable { showEventPicker = true }
+            )
+          }
+        }
       }
     }
 
@@ -439,7 +674,7 @@ fun NoteDetailScreen(
       modifier = Modifier
         .fillMaxWidth()
         .padding(horizontal = 16.dp, vertical = 12.dp),
-      horizontalArrangement = Arrangement.spacedBy(2.dp)
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
       Box(
         modifier = Modifier
@@ -447,13 +682,23 @@ fun NoteDetailScreen(
           .background(colors.accent)
           .clickable {
             val allItems = existingItems.map { it.text } + extraItems
-            onSave(noteWithItems?.note?.id, title, body, selectedCategory, format, allItems)
+            onSave(
+              noteWithItems?.note?.id,
+              title.ifBlank { "Sem título" },
+              body,
+              selectedCategory,
+              format,
+              allItems,
+              attachedEventId,
+              attachedEventSummary,
+              attachedDate
+            )
           }
           .padding(14.dp),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
       ) {
         Text(
-          text = "Concluir",
+          text = "Salvar post-it",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.ExtraBold,
           fontSize = 13.sp,
@@ -474,26 +719,6 @@ fun NoteDetailScreen(
           fontWeight = FontWeight.ExtraBold,
           fontSize = 13.sp,
           color = if (isPinned) colors.canvas else colors.text
-        )
-      }
-
-      Box(
-        modifier = Modifier
-          .border(1.dp, colors.rulerStrong, RectangleShape)
-          .clickable {
-            val allItems = existingItems.map { it.text } + extraItems
-            onSave(noteWithItems?.note?.id, title, body, selectedCategory, format, allItems)
-            onBack()
-          }
-          .padding(14.dp),
-        contentAlignment = Alignment.Center
-      ) {
-        Text(
-          text = "Arquivar",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.ExtraBold,
-          fontSize = 13.sp,
-          color = colors.text
         )
       }
     }

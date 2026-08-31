@@ -220,7 +220,22 @@ fun BlocoApp(
                   onSelectViewMode = { viewModel.setCalendarViewMode(it) },
                   onSelectDate = { viewModel.selectCalendarDate(it) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
-                  onOpenOffline = { viewModel.setOverlay(ActiveOverlay.OFFLINE) }
+                  onSyncNow = {
+                    val hasPermission = ContextCompat.checkSelfPermission(
+                      context,
+                      Manifest.permission.READ_CALENDAR
+                    ) == PackageManager.PERMISSION_GRANTED
+                    if (hasPermission) {
+                      viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
+                    } else {
+                      permissionLauncher.launch(
+                        arrayOf(
+                          Manifest.permission.READ_CALENDAR,
+                          Manifest.permission.WRITE_CALENDAR
+                        )
+                      )
+                    }
+                  }
                 )
               }
               TopSection.HABITOS -> {
@@ -242,9 +257,10 @@ fun BlocoApp(
             val selectedNoteWithItems = notes.find { it.note.id == uiState.selectedNoteId }
             NoteDetailScreen(
               noteWithItems = selectedNoteWithItems,
+              events = events,
               onBack = { viewModel.closeOverlay() },
-              onSave = { id, title, body, catId, format, items ->
-                viewModel.saveNote(id, title, body, catId, format, items)
+              onSave = { id, title, body, catId, format, items, eventId, eventSummary, date ->
+                viewModel.saveNote(id, title, body, catId, format, items, eventId, eventSummary, date)
               },
               onToggleItem = { itemId, currentDone ->
                 viewModel.toggleChecklistItem(itemId, currentDone)
@@ -263,8 +279,8 @@ fun BlocoApp(
           ActiveOverlay.HABIT_CREATE -> {
             HabitCreateScreen(
               onBack = { viewModel.closeOverlay() },
-              onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal ->
-                viewModel.saveHabit(name, repeatType, repeatDays, durationDays, reminder, showInCal)
+              onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay ->
+                viewModel.saveHabit(name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay)
               }
             )
           }
@@ -302,6 +318,7 @@ fun BlocoApp(
               onBack = { viewModel.closeOverlay() },
               calendars = calendars,
               onToggleCalendar = { calId -> viewModel.toggleCalendarSelection(calId) },
+              onSelectAllCalendars = { isSelected -> viewModel.selectAllCalendars(isSelected) },
               onClearData = { viewModel.clearAllData() },
               onSyncCalendar = {
                 val hasPermission = ContextCompat.checkSelfPermission(

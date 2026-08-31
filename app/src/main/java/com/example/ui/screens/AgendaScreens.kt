@@ -58,7 +58,7 @@ fun AgendaScreen(
   onSelectViewMode: (CalendarViewMode) -> Unit,
   onSelectDate: (LocalDate) -> Unit,
   onCreateEvent: () -> Unit,
-  onOpenOffline: () -> Unit,
+  onSyncNow: () -> Unit,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -236,7 +236,7 @@ fun AgendaScreen(
         ViewModeChip("Semana", isSelected = viewMode == CalendarViewMode.SEMANA) { onSelectViewMode(CalendarViewMode.SEMANA) }
         ViewModeChip("Dia", isSelected = viewMode == CalendarViewMode.DIA) { onSelectViewMode(CalendarViewMode.DIA) }
         Spacer(modifier = Modifier.weight(1f))
-        ViewModeChip("Sincronização", isSelected = false) { onOpenOffline() }
+        ViewModeChip("↻ Sincronizar", isSelected = false) { onSyncNow() }
       }
 
       Spacer(modifier = Modifier.height(10.dp))
@@ -247,7 +247,7 @@ fun AgendaScreen(
           .fillMaxWidth()
           .background(colors.track)
           .border(0.5.dp, colors.rulerWeak, RectangleShape)
-          .clickable { onOpenOffline() }
+          .clickable { onSyncNow() }
           .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -268,7 +268,7 @@ fun AgendaScreen(
           )
         }
         Text(
-          text = "↻ Sincronizado",
+          text = "↻ Sincronizar agora",
           fontFamily = ArchivoFont,
           fontWeight = FontWeight.Bold,
           fontSize = 10.sp,

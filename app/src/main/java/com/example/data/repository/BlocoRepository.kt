@@ -156,6 +156,12 @@ class BlocoRepository(
     calendarDao.updateCalendar(cal.copy(isSelected = !cal.isSelected))
   }
 
+  suspend fun selectAllCalendars(isSelected: Boolean) {
+    val currentCalendars = calendars.first()
+    val updated = currentCalendars.map { it.copy(isSelected = isSelected) }
+    calendarDao.insertCalendars(updated)
+  }
+
   suspend fun clearSyncQueue() {
     syncQueueDao.clearQueue()
   }

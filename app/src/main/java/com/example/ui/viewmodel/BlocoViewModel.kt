@@ -178,16 +178,22 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     body: String,
     categoryId: String,
     format: NoteFormat,
-    items: List<String>
+    items: List<String>,
+    attachedEventId: String? = null,
+    attachedEventSummary: String? = null,
+    attachedDate: String? = null
   ) {
     viewModelScope.launch {
-      val noteId = id ?: "note_${System.currentTimeMillis()}"
+      val noteId = id?.ifBlank { null } ?: "note_${System.currentTimeMillis()}"
       val note = Note(
         id = noteId,
         title = title.ifBlank { "Nova nota" },
         body = body,
         categoryId = categoryId,
         format = format,
+        attachedEventId = attachedEventId,
+        attachedEventSummary = attachedEventSummary,
+        attachedDate = attachedDate,
         updatedAt = System.currentTimeMillis()
       )
       val noteItems = items.filter { it.isNotBlank() }.mapIndexed { idx, text ->
@@ -210,7 +216,8 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     repeatDays: String,
     durationDays: Int,
     reminderTime: String,
-    showInCalendar: Boolean
+    showInCalendar: Boolean,
+    startDateEpochDay: Long = HabitCalculations.todayEpochDay()
   ) {
     viewModelScope.launch {
       val habit = Habit(
@@ -219,7 +226,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
         repeatType = repeatType,
         repeatDays = repeatDays,
         durationDays = durationDays,
-        startDateEpochDay = HabitCalculations.todayEpochDay(),
+        startDateEpochDay = startDateEpochDay,
         reminderTime = reminderTime,
         showInCalendar = showInCalendar
       )
@@ -275,6 +282,12 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
   fun updateCalendarSelection(calendarId: String, isSelected: Boolean) {
     viewModelScope.launch {
       repository.updateCalendarSelection(calendarId, isSelected)
+    }
+  }
+
+  fun selectAllCalendars(isSelected: Boolean) {
+    viewModelScope.launch {
+      repository.selectAllCalendars(isSelected)
     }
   }
 

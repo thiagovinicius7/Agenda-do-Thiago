@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -204,6 +205,7 @@ fun SettingsScreen(
   onBack: () -> Unit,
   calendars: List<GoogleCalendar> = emptyList(),
   onToggleCalendar: ((String) -> Unit)? = null,
+  onSelectAllCalendars: ((Boolean) -> Unit)? = null,
   onClearData: (() -> Unit)? = null,
   onSyncCalendar: (() -> Unit)? = null,
   modifier: Modifier = Modifier
@@ -759,9 +761,64 @@ fun SettingsScreen(
       title = "CALENDÁRIOS DO GOOGLE",
       onDismiss = { showCalendarsDialog = false }
     ) {
-      Text("Selecione quais calendários exibir na Agenda:", fontFamily = ArchivoFont, fontSize = 11.5.sp, color = colors.textSecondary)
+      Text(
+        text = "Selecione quais calendários da sua conta Google exibir na Agenda:",
+        fontFamily = ArchivoFont,
+        fontSize = 11.5.sp,
+        color = colors.textSecondary
+      )
       Spacer(modifier = Modifier.height(10.dp))
-      Column(modifier = Modifier.fillMaxWidth().border(1.dp, colors.rulerStrong, RectangleShape)) {
+
+      // Bulk Select / Deselect actions
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Box(
+          modifier = Modifier
+            .weight(1f)
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { onSelectAllCalendars?.invoke(true) }
+            .padding(vertical = 8.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "✓ Marcar todos",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = colors.text
+          )
+        }
+
+        Box(
+          modifier = Modifier
+            .weight(1f)
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { onSelectAllCalendars?.invoke(false) }
+            .padding(vertical = 8.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "✕ Desmarcar todos",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      // Scrollable list of calendars with explicit max height
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .heightIn(max = 280.dp)
+          .verticalScroll(rememberScrollState())
+          .border(1.dp, colors.rulerStrong, RectangleShape)
+      ) {
         displayCalendars.forEachIndexed { idx, cal ->
           val calColor = try {
             Color(android.graphics.Color.parseColor(cal.colorHex))
@@ -774,23 +831,37 @@ fun SettingsScreen(
               .clickable {
                 onToggleCalendar?.invoke(cal.id)
               }
-              .padding(10.dp),
+              .background(if (cal.isSelected) colors.accent.copy(alpha = 0.05f) else Color.Transparent)
+              .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
           ) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-              Box(modifier = Modifier.size(8.dp).background(calColor))
-              Spacer(modifier = Modifier.width(8.dp))
+              Box(modifier = Modifier.size(10.dp).background(calColor))
+              Spacer(modifier = Modifier.width(10.dp))
               Column {
-                Text(text = cal.name, fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = colors.text)
-                Text(text = cal.accountEmail, fontFamily = ArchivoFont, fontWeight = FontWeight.Normal, fontSize = 10.sp, color = colors.textSecondary)
+                Text(
+                  text = cal.name,
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.sp,
+                  color = colors.text
+                )
+                Text(
+                  text = cal.accountEmail,
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Normal,
+                  fontSize = 10.sp,
+                  color = colors.textSecondary
+                )
               }
             }
             ModernistCheckbox(
               checked = cal.isSelected,
               onCheckedChange = {
                 onToggleCalendar?.invoke(cal.id)
-              }
+              },
+              size = 18.dp
             )
           }
           if (idx < displayCalendars.lastIndex) {
@@ -800,7 +871,7 @@ fun SettingsScreen(
       }
       Spacer(modifier = Modifier.height(14.dp))
       ModernistButton(
-        text = "Pronto",
+        text = "Pronto (${displayCalendars.count { it.isSelected }} selecionados)",
         onClick = { showCalendarsDialog = false },
         modifier = Modifier.fillMaxWidth()
       )
@@ -999,6 +1070,7 @@ fun ModernistSimpleDialog(
     Column(
       modifier = Modifier
         .fillMaxWidth()
+        .heightIn(max = 560.dp)
         .background(colors.canvas)
         .border(2.dp, colors.text, RectangleShape)
         .padding(16.dp)
@@ -1021,7 +1093,14 @@ fun ModernistSimpleDialog(
       Spacer(modifier = Modifier.height(10.dp))
       Ruler2dp()
       Spacer(modifier = Modifier.height(12.dp))
-      content()
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f, fill = false)
+          .verticalScroll(rememberScrollState())
+      ) {
+        content()
+      }
     }
   }
 }

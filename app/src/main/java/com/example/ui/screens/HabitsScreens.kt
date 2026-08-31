@@ -48,6 +48,9 @@ import com.example.ui.theme.BigStatStyle
 import com.example.ui.theme.LocalBlocoColors
 import com.example.ui.theme.SectionLabelStyle
 import com.example.util.HabitCalculations
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun HabitsListScreen(
@@ -544,7 +547,7 @@ fun HabitDetailScreen(
 @Composable
 fun HabitCreateScreen(
   onBack: () -> Unit,
-  onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean) -> Unit,
+  onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean, startDateEpochDay: Long) -> Unit,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -554,9 +557,15 @@ fun HabitCreateScreen(
   var repeatType by remember { mutableStateOf(RepeatType.DAYS_OF_WEEK) }
   var selectedDays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5, 6)) } // Mon-Sat
   var durationDays by remember { mutableIntStateOf(150) }
+  val today = remember { LocalDate.now() }
+  var startDate by remember { mutableStateOf(today) }
   var showInCalendar by remember { mutableStateOf(true) }
   var pauseAllowed by remember { mutableStateOf(false) }
   var reminderTime by remember { mutableStateOf("06:30") }
+
+  val ptBr = remember { Locale("pt", "BR") }
+  val dateDisplayFmt = remember { DateTimeFormatter.ofPattern("d 'de' MMMM", ptBr) }
+  val shortFmt = remember { DateTimeFormatter.ofPattern("d MMM", ptBr) }
 
   // Synthetic calculated preview for creation
   val dummyHabit = Habit(
@@ -565,10 +574,10 @@ fun HabitCreateScreen(
     repeatType = repeatType,
     repeatDays = selectedDays.joinToString(","),
     durationDays = durationDays,
-    startDateEpochDay = HabitCalculations.todayEpochDay()
+    startDateEpochDay = startDate.toEpochDay()
   )
-  val previewCalc = remember(name, repeatType, selectedDays, durationDays) {
-    HabitCalculations.calculate(dummyHabit, emptyList())
+  val previewCalc = remember(name, repeatType, selectedDays, durationDays, startDate) {
+    HabitCalculations.calculate(dummyHabit, emptyList(), currentEpochDay = startDate.toEpochDay())
   }
 
   Column(
@@ -629,7 +638,80 @@ fun HabitCreateScreen(
 
       Spacer(modifier = Modifier.height(22.dp))
 
-      // 2. Repetition Rule
+      // 2. Data de Início (START DATE)
+      Text(text = "DATA DE INÍCIO", style = SectionLabelStyle, color = colors.textTertiary)
+      Spacer(modifier = Modifier.height(8.dp))
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+      ) {
+        DurationChip(
+          label = "Hoje (${today.format(shortFmt)})",
+          isSelected = startDate == today
+        ) { startDate = today }
+
+        val tomorrow = today.plusDays(1)
+        DurationChip(
+          label = "Amanhã (${tomorrow.format(shortFmt)})",
+          isSelected = startDate == tomorrow
+        ) { startDate = tomorrow }
+
+        val nextMonday = today.plusDays(((8 - today.dayOfWeek.value) % 7).toLong().let { if (it == 0L) 7L else it })
+        DurationChip(
+          label = "Seg (${nextMonday.format(shortFmt)})",
+          isSelected = startDate == nextMonday
+        ) { startDate = nextMonday }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Fine adjustment for start date
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .border(1.dp, colors.rulerStrong, RectangleShape)
+          .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { startDate = startDate.minusDays(1) }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+          Text(text = "← -1 dia", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+        }
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+          Text(
+            text = startDate.format(dateDisplayFmt).uppercase(ptBr),
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 13.sp,
+            color = colors.text
+          )
+          Text(
+            text = if (startDate == today) "Hoje" else if (startDate == today.plusDays(1)) "Amanhã" else "Início escolhido",
+            fontFamily = ArchivoFont,
+            fontSize = 10.sp,
+            color = colors.accentDark
+          )
+        }
+
+        Row(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { startDate = startDate.plusDays(1) }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+          Text(text = "+1 dia →", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+        }
+      }
+
+      Spacer(modifier = Modifier.height(22.dp))
+
+      // 3. Repetition Rule
       Text(text = "REPETIÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(8.dp))
 
@@ -683,7 +765,7 @@ fun HabitCreateScreen(
 
       Spacer(modifier = Modifier.height(22.dp))
 
-      // 3. Duration Selector
+      // 4. Duration Selector
       Text(text = "DURAÇÃO", style = SectionLabelStyle, color = colors.textTertiary)
       Spacer(modifier = Modifier.height(8.dp))
       Row(
@@ -697,12 +779,25 @@ fun HabitCreateScreen(
       }
 
       Spacer(modifier = Modifier.height(14.dp))
+      val endDate = if (durationDays > 0) startDate.plusDays(durationDays.toLong()) else null
       Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
       ) {
-        Text(text = "Início 30 ago (d1)", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, color = colors.textSecondary)
-        Text(text = if (durationDays > 0) "Fim 27 jan (d$durationDays)" else "Sem data final", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, color = colors.textSecondary)
+        Text(
+          text = "Início: ${startDate.format(shortFmt)} (d1)",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 10.sp,
+          color = colors.textSecondary
+        )
+        Text(
+          text = if (endDate != null) "Fim: ${endDate.format(shortFmt)} (d$durationDays)" else "Sem data final",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.SemiBold,
+          fontSize = 10.sp,
+          color = colors.textSecondary
+        )
       }
 
       Spacer(modifier = Modifier.height(8.dp))
@@ -781,7 +876,7 @@ fun HabitCreateScreen(
       ModernistButton(
         text = "Criar hábito",
         onClick = {
-          onSaveHabit(name, repeatType, selectedDays.joinToString(","), durationDays, reminderTime, showInCalendar)
+          onSaveHabit(name, repeatType, selectedDays.joinToString(","), durationDays, reminderTime, showInCalendar, startDate.toEpochDay())
         },
         modifier = Modifier.fillMaxWidth()
       )
