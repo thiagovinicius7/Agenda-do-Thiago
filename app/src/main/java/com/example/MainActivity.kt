@@ -411,6 +411,12 @@ fun BlocoApp(
               onCreateBackup = { onDone ->
                 viewModel.createBackup(context, onDone)
               },
+              onShareBackup = { json ->
+                viewModel.shareBackupFile(context, json)
+              },
+              onGetLastBackupJson = {
+                viewModel.getLastBackupJson(context)
+              },
               onRestoreLastBackup = { onResult ->
                 viewModel.restoreLastBackup(context, onResult)
               },

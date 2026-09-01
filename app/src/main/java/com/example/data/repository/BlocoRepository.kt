@@ -466,180 +466,292 @@ class BlocoRepository(
   }
 
   suspend fun restoreFromBackupJson(jsonString: String): String {
-    val root = org.json.JSONObject(jsonString.trim())
+    var cleanJson = jsonString.trim()
+    // Remove BOM if present
+    if (cleanJson.startsWith("\uFEFF")) {
+      cleanJson = cleanJson.substring(1).trim()
+    }
+    // Remove markdown code fences if pasted with ```json or ```
+    if (cleanJson.startsWith("```json")) {
+      cleanJson = cleanJson.removePrefix("```json").trim()
+    } else if (cleanJson.startsWith("```")) {
+      cleanJson = cleanJson.removePrefix("```").trim()
+    }
+    if (cleanJson.endsWith("```")) {
+      cleanJson = cleanJson.removeSuffix("```").trim()
+    }
 
-    // Clear existing data before restoring
+    if (cleanJson.isBlank()) {
+      throw IllegalArgumentException("O texto do backup está vazio.")
+    }
+
+    val root = try {
+      org.json.JSONObject(cleanJson)
+    } catch (e: Exception) {
+      // Check if it's a raw array
+      try {
+        val arr = org.json.JSONArray(cleanJson)
+        val obj = org.json.JSONObject()
+        obj.put("notes", arr)
+        obj
+      } catch (e2: Exception) {
+        throw IllegalArgumentException("Formato JSON inválido: ${e.message}")
+      }
+    }
+
+    // Step 1: Parse all data into memory safely before touching database
+    val catList = mutableListOf<Category>()
+    val noteList = mutableListOf<Note>()
+    val itemList = mutableListOf<NoteItem>()
+    val habitList = mutableListOf<Habit>()
+    val markList = mutableListOf<HabitMark>()
+    val calList = mutableListOf<GoogleCalendar>()
+    val eventList = mutableListOf<CalendarEvent>()
+
+    // Helper functions for safe type conversion
+    fun safeLong(obj: org.json.JSONObject, key: String, defaultVal: Long): Long {
+      if (!obj.has(key) || obj.isNull(key)) return defaultVal
+      return try {
+        obj.optLong(key, defaultVal)
+      } catch (e: Exception) {
+        obj.optString(key).toLongOrNull() ?: defaultVal
+      }
+    }
+
+    fun safeInt(obj: org.json.JSONObject, key: String, defaultVal: Int): Int {
+      if (!obj.has(key) || obj.isNull(key)) return defaultVal
+      return try {
+        obj.optInt(key, defaultVal)
+      } catch (e: Exception) {
+        obj.optString(key).toIntOrNull() ?: defaultVal
+      }
+    }
+
+    // Parse Categories
+    val catsArr = root.optJSONArray("categories") ?: root.optJSONArray("category_list")
+    if (catsArr != null) {
+      for (i in 0 until catsArr.length()) {
+        try {
+          val obj = catsArr.getJSONObject(i)
+          val id = obj.optString("id", "cat_$i").ifBlank { "cat_$i" }
+          val name = obj.optString("name", "Categoria $i").ifBlank { "Categoria $i" }
+          val color = obj.optString("colorHex", "#EC3013").ifBlank { "#EC3013" }
+          val order = safeInt(obj, "order", i)
+          catList.add(Category(id = id, name = name, colorHex = color, order = order))
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Notes
+    val notesArr = root.optJSONArray("notes") ?: root.optJSONArray("note_list") ?: root.optJSONArray("postits")
+    if (notesArr != null) {
+      for (i in 0 until notesArr.length()) {
+        try {
+          val obj = notesArr.getJSONObject(i)
+          val id = obj.optString("id", "note_${System.currentTimeMillis()}_$i").ifBlank { "note_${System.currentTimeMillis()}_$i" }
+          val title = obj.optString("title", "")
+          val body = obj.optString("body", "")
+          val catId = obj.optString("categoryId", "trabalho").ifBlank { "trabalho" }
+          val fmtStr = obj.optString("format", NoteFormat.NOTE.name)
+          val fmt = try { NoteFormat.valueOf(fmtStr) } catch (e: Exception) { NoteFormat.NOTE }
+          val isPinned = obj.optBoolean("isPinned", false)
+          val isArchived = obj.optBoolean("isArchived", false)
+          val attachedEventId = obj.optString("attachedEventId").ifBlank { null }
+          val attachedEventSummary = obj.optString("attachedEventSummary").ifBlank { null }
+          val attachedDate = obj.optString("attachedDate").ifBlank { null }
+          val createdAt = safeLong(obj, "createdAt", System.currentTimeMillis())
+          val updatedAt = safeLong(obj, "updatedAt", System.currentTimeMillis())
+
+          noteList.add(
+            Note(
+              id = id,
+              title = title,
+              body = body,
+              categoryId = catId,
+              format = fmt,
+              isPinned = isPinned,
+              isArchived = isArchived,
+              attachedEventId = attachedEventId,
+              attachedEventSummary = attachedEventSummary,
+              attachedDate = attachedDate,
+              createdAt = createdAt,
+              updatedAt = updatedAt
+            )
+          )
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Note Items
+    val itemsArr = root.optJSONArray("noteItems") ?: root.optJSONArray("note_items") ?: root.optJSONArray("items")
+    if (itemsArr != null) {
+      for (i in 0 until itemsArr.length()) {
+        try {
+          val obj = itemsArr.getJSONObject(i)
+          val id = obj.optString("id", "item_$i").ifBlank { "item_$i" }
+          val noteId = obj.optString("noteId", "").ifBlank { obj.optString("note_id", "") }
+          val text = obj.optString("text", "")
+          val isDone = obj.optBoolean("isDone", false) || obj.optBoolean("is_done", false)
+          val orderIdx = safeInt(obj, "orderIndex", i)
+          if (noteId.isNotBlank()) {
+            itemList.add(
+              NoteItem(
+                id = id,
+                noteId = noteId,
+                text = text,
+                isDone = isDone,
+                orderIndex = orderIdx
+              )
+            )
+          }
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Habits
+    val habitsArr = root.optJSONArray("habits") ?: root.optJSONArray("habit_list")
+    if (habitsArr != null) {
+      for (i in 0 until habitsArr.length()) {
+        try {
+          val obj = habitsArr.getJSONObject(i)
+          val id = obj.optString("id", "habit_$i").ifBlank { "habit_$i" }
+          val name = obj.optString("name", "Hábito $i").ifBlank { "Hábito $i" }
+          val repTypeStr = obj.optString("repeatType", RepeatType.DAILY.name)
+          val repType = try { RepeatType.valueOf(repTypeStr) } catch (e: Exception) { RepeatType.DAILY }
+          val repDays = obj.optString("repeatDays", "1,2,3,4,5,6").ifBlank { "1,2,3,4,5,6" }
+          val durationDays = safeInt(obj, "durationDays", 0)
+          val startEpoch = safeLong(obj, "startDateEpochDay", HabitCalculations.todayEpochDay())
+          val isArchived = obj.optBoolean("isArchived", false)
+          val reminderTime = obj.optString("reminderTime", "Desativado").ifBlank { "Desativado" }
+          val showInCal = obj.optBoolean("showInCalendar", true)
+          val savedStreak = safeInt(obj, "pausedSavedStreak", 0)
+          val createdAt = safeLong(obj, "createdAt", System.currentTimeMillis())
+
+          habitList.add(
+            Habit(
+              id = id,
+              name = name,
+              repeatType = repType,
+              repeatDays = repDays,
+              durationDays = durationDays,
+              startDateEpochDay = startEpoch,
+              isArchived = isArchived,
+              reminderTime = reminderTime,
+              showInCalendar = showInCal,
+              pausedSavedStreak = savedStreak,
+              createdAt = createdAt
+            )
+          )
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Habit Marks
+    val marksArr = root.optJSONArray("habitMarks") ?: root.optJSONArray("habit_marks") ?: root.optJSONArray("marks")
+    if (marksArr != null) {
+      for (i in 0 until marksArr.length()) {
+        try {
+          val obj = marksArr.getJSONObject(i)
+          val habitId = obj.optString("habitId", "").ifBlank { obj.optString("habit_id", "") }
+          val epochDay = safeLong(obj, "dateEpochDay", 0L)
+          val statStr = obj.optString("status", HabitMarkStatus.DONE.name)
+          val stat = try { HabitMarkStatus.valueOf(statStr) } catch (e: Exception) { HabitMarkStatus.DONE }
+          if (habitId.isNotBlank() && epochDay != 0L) {
+            markList.add(
+              HabitMark(
+                habitId = habitId,
+                dateEpochDay = epochDay,
+                status = stat
+              )
+            )
+          }
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Calendars
+    val calsArr = root.optJSONArray("calendars") ?: root.optJSONArray("calendar_list")
+    if (calsArr != null) {
+      for (i in 0 until calsArr.length()) {
+        try {
+          val obj = calsArr.getJSONObject(i)
+          val id = obj.optString("id", "cal_$i").ifBlank { "cal_$i" }
+          val name = obj.optString("name", "Agenda $i").ifBlank { "Agenda $i" }
+          val email = obj.optString("accountEmail", "thiagovinicius7@gmail.com")
+          val color = obj.optString("colorHex", "#EC3013").ifBlank { "#EC3013" }
+          val isPrimary = obj.optBoolean("isPrimary", false)
+          val isReadOnly = obj.optBoolean("isReadOnly", false)
+          val isSelected = obj.optBoolean("isSelected", true)
+
+          calList.add(
+            GoogleCalendar(
+              id = id,
+              name = name,
+              accountEmail = email,
+              colorHex = color,
+              isPrimary = isPrimary,
+              isReadOnly = isReadOnly,
+              isSelected = isSelected
+            )
+          )
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Events
+    val eventsArr = root.optJSONArray("events") ?: root.optJSONArray("event_list") ?: root.optJSONArray("calendar_events")
+    if (eventsArr != null) {
+      for (i in 0 until eventsArr.length()) {
+        try {
+          val obj = eventsArr.getJSONObject(i)
+          val id = obj.optString("id", "event_$i").ifBlank { "event_$i" }
+          val calId = obj.optString("calendarId", "").ifBlank { obj.optString("calendar_id", "") }
+          val title = obj.optString("title", "Compromisso").ifBlank { "Compromisso" }
+          val startEpoch = safeLong(obj, "startEpochMillis", System.currentTimeMillis())
+          val endEpoch = safeLong(obj, "endEpochMillis", startEpoch + 3600000)
+          val isAllDay = obj.optBoolean("isAllDay", false)
+          val location = obj.optString("location").ifBlank { null }
+          val attachedNoteId = obj.optString("attachedNoteId").ifBlank { null }
+          val attachedNoteTitle = obj.optString("attachedNoteTitle").ifBlank { null }
+          val isLocalOnly = obj.optBoolean("isLocalOnly", false)
+
+          eventList.add(
+            CalendarEvent(
+              id = id,
+              calendarId = calId,
+              title = title,
+              startEpochMillis = startEpoch,
+              endEpochMillis = endEpoch,
+              isAllDay = isAllDay,
+              location = location,
+              attachedNoteId = attachedNoteId,
+              attachedNoteTitle = attachedNoteTitle,
+              isLocalOnly = isLocalOnly,
+              isPendingSync = false
+            )
+          )
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Ensure we actually found something to restore or default setup
+    val totalItems = catList.size + noteList.size + habitList.size + eventList.size
+    if (totalItems == 0 && root.length() == 0) {
+      throw IllegalArgumentException("O backup fornecido não contém dados válidos de notas, hábitos ou agenda.")
+    }
+
+    // Step 2: Now that everything parsed cleanly, apply to database
     clearAllPreloadedData()
 
-    var restoredNotesCount = 0
-    var restoredHabitsCount = 0
-    var restoredEventsCount = 0
+    if (catList.isNotEmpty()) noteDao.insertCategories(catList)
+    if (noteList.isNotEmpty()) noteDao.insertNotes(noteList)
+    if (itemList.isNotEmpty()) noteDao.insertNoteItems(itemList)
+    if (habitList.isNotEmpty()) habitDao.insertHabits(habitList)
+    if (markList.isNotEmpty()) habitDao.insertMarks(markList)
+    if (calList.isNotEmpty()) calendarDao.insertCalendars(calList)
+    if (eventList.isNotEmpty()) calendarDao.insertEvents(eventList)
 
-    // Restore Categories
-    if (root.has("categories")) {
-      val catsArr = root.getJSONArray("categories")
-      val catList = mutableListOf<Category>()
-      for (i in 0 until catsArr.length()) {
-        val obj = catsArr.getJSONObject(i)
-        catList.add(
-          Category(
-            id = obj.getString("id"),
-            name = obj.getString("name"),
-            colorHex = obj.optString("colorHex", "#EC3013"),
-            order = obj.optInt("order", i)
-          )
-        )
-      }
-      if (catList.isNotEmpty()) noteDao.insertCategories(catList)
-    }
-
-    // Restore Notes
-    if (root.has("notes")) {
-      val notesArr = root.getJSONArray("notes")
-      val noteList = mutableListOf<Note>()
-      for (i in 0 until notesArr.length()) {
-        val obj = notesArr.getJSONObject(i)
-        val fmtStr = obj.optString("format", NoteFormat.NOTE.name)
-        val fmt = try { NoteFormat.valueOf(fmtStr) } catch (e: Exception) { NoteFormat.NOTE }
-        noteList.add(
-          Note(
-            id = obj.getString("id"),
-            title = obj.getString("title"),
-            body = obj.optString("body", ""),
-            categoryId = obj.optString("categoryId", "trabalho"),
-            format = fmt,
-            isPinned = obj.optBoolean("isPinned", false),
-            isArchived = obj.optBoolean("isArchived", false),
-            attachedEventId = obj.optString("attachedEventId").ifBlank { null },
-            attachedEventSummary = obj.optString("attachedEventSummary").ifBlank { null },
-            attachedDate = obj.optString("attachedDate").ifBlank { null },
-            createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-            updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
-          )
-        )
-      }
-      if (noteList.isNotEmpty()) {
-        noteDao.insertNotes(noteList)
-        restoredNotesCount = noteList.size
-      }
-    }
-
-    // Restore Note Items
-    if (root.has("noteItems")) {
-      val itemsArr = root.getJSONArray("noteItems")
-      val itemList = mutableListOf<NoteItem>()
-      for (i in 0 until itemsArr.length()) {
-        val obj = itemsArr.getJSONObject(i)
-        itemList.add(
-          NoteItem(
-            id = obj.getString("id"),
-            noteId = obj.getString("noteId"),
-            text = obj.getString("text"),
-            isDone = obj.optBoolean("isDone", false),
-            orderIndex = obj.optInt("orderIndex", i)
-          )
-        )
-      }
-      if (itemList.isNotEmpty()) noteDao.insertNoteItems(itemList)
-    }
-
-    // Restore Habits
-    if (root.has("habits")) {
-      val habitsArr = root.getJSONArray("habits")
-      val habitList = mutableListOf<Habit>()
-      for (i in 0 until habitsArr.length()) {
-        val obj = habitsArr.getJSONObject(i)
-        val repType = try { RepeatType.valueOf(obj.optString("repeatType", RepeatType.DAILY.name)) } catch (e: Exception) { RepeatType.DAILY }
-        habitList.add(
-          Habit(
-            id = obj.getString("id"),
-            name = obj.getString("name"),
-            repeatType = repType,
-            repeatDays = obj.optString("repeatDays", "1,2,3,4,5,6"),
-            durationDays = obj.optInt("durationDays", 0),
-            startDateEpochDay = obj.optLong("startDateEpochDay", HabitCalculations.todayEpochDay()),
-            isArchived = obj.optBoolean("isArchived", false),
-            reminderTime = obj.optString("reminderTime", "Desativado"),
-            showInCalendar = obj.optBoolean("showInCalendar", true),
-            pausedSavedStreak = obj.optInt("pausedSavedStreak", 0),
-            createdAt = obj.optLong("createdAt", System.currentTimeMillis())
-          )
-        )
-      }
-      if (habitList.isNotEmpty()) {
-        habitDao.insertHabits(habitList)
-        restoredHabitsCount = habitList.size
-      }
-    }
-
-    // Restore Habit Marks
-    if (root.has("habitMarks")) {
-      val marksArr = root.getJSONArray("habitMarks")
-      val markList = mutableListOf<HabitMark>()
-      for (i in 0 until marksArr.length()) {
-        val obj = marksArr.getJSONObject(i)
-        val stat = try { HabitMarkStatus.valueOf(obj.optString("status", HabitMarkStatus.DONE.name)) } catch (e: Exception) { HabitMarkStatus.DONE }
-        markList.add(
-          HabitMark(
-            habitId = obj.getString("habitId"),
-            dateEpochDay = obj.getLong("dateEpochDay"),
-            status = stat
-          )
-        )
-      }
-      if (markList.isNotEmpty()) habitDao.insertMarks(markList)
-    }
-
-    // Restore Calendars
-    if (root.has("calendars")) {
-      val calsArr = root.getJSONArray("calendars")
-      val calList = mutableListOf<GoogleCalendar>()
-      for (i in 0 until calsArr.length()) {
-        val obj = calsArr.getJSONObject(i)
-        calList.add(
-          GoogleCalendar(
-            id = obj.getString("id"),
-            name = obj.getString("name"),
-            accountEmail = obj.optString("accountEmail", "thiagovinicius7@gmail.com"),
-            colorHex = obj.optString("colorHex", "#EC3013"),
-            isPrimary = obj.optBoolean("isPrimary", false),
-            isReadOnly = obj.optBoolean("isReadOnly", false),
-            isSelected = obj.optBoolean("isSelected", true)
-          )
-        )
-      }
-      if (calList.isNotEmpty()) calendarDao.insertCalendars(calList)
-    }
-
-    // Restore Events
-    if (root.has("events")) {
-      val eventsArr = root.getJSONArray("events")
-      val eventList = mutableListOf<CalendarEvent>()
-      for (i in 0 until eventsArr.length()) {
-        val obj = eventsArr.getJSONObject(i)
-        eventList.add(
-          CalendarEvent(
-            id = obj.getString("id"),
-            calendarId = obj.optString("calendarId", ""),
-            title = obj.getString("title"),
-            startEpochMillis = obj.getLong("startEpochMillis"),
-            endEpochMillis = obj.optLong("endEpochMillis", obj.getLong("startEpochMillis") + 3600000),
-            isAllDay = obj.optBoolean("isAllDay", false),
-            location = obj.optString("location").ifBlank { null },
-            attachedNoteId = obj.optString("attachedNoteId").ifBlank { null },
-            attachedNoteTitle = obj.optString("attachedNoteTitle").ifBlank { null },
-            isLocalOnly = obj.optBoolean("isLocalOnly", false),
-            isPendingSync = false
-          )
-        )
-      }
-      if (eventList.isNotEmpty()) {
-        calendarDao.insertEvents(eventList)
-        restoredEventsCount = eventList.size
-      }
-    }
-
-    return "Backup restaurado com sucesso! ($restoredNotesCount notas, $restoredHabitsCount hábitos, $restoredEventsCount eventos)"
+    return "Backup restaurado com sucesso! (${noteList.size} notas, ${habitList.size} hábitos, ${eventList.size} compromissos)"
   }
 
   // Initial categories setup and cleanup of mock data

@@ -210,6 +210,8 @@ fun SettingsScreen(
   onClearData: (() -> Unit)? = null,
   onSyncCalendar: (() -> Unit)? = null,
   onCreateBackup: (((String) -> Unit) -> Unit)? = null,
+  onShareBackup: ((String) -> String?)? = null,
+  onGetLastBackupJson: (() -> String?)? = null,
   onRestoreLastBackup: (((String) -> Unit) -> Unit)? = null,
   onRestoreCustomBackup: ((String, (String) -> Unit) -> Unit)? = null,
   lastBackupInfo: String? = null,
@@ -217,6 +219,7 @@ fun SettingsScreen(
 ) {
   val colors = LocalBlocoColors.current
   val context = androidx.compose.ui.platform.LocalContext.current
+  val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
   val scrollState = rememberScrollState()
 
   // User State
@@ -234,6 +237,7 @@ fun SettingsScreen(
   var lastBackupText by remember(lastBackupInfo) { mutableStateOf(lastBackupInfo ?: "Nenhum salvo") }
   var backupMessage by remember { mutableStateOf<String?>(null) }
   var lastGeneratedJson by remember { mutableStateOf<String?>(null) }
+  var pendingJsonToSave by remember { mutableStateOf<String?>(null) }
 
   // Categories list
   var categories by remember {
@@ -265,13 +269,14 @@ fun SettingsScreen(
   var showArchiveDialog by remember { mutableStateOf(false) }
   var showClearDataDialog by remember { mutableStateOf(false) }
 
+  // File Picker to Open Backup
   val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-    contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
   ) { uri: android.net.Uri? ->
     if (uri != null) {
       try {
         val content = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-          inputStream.bufferedReader().use { it.readText() }
+          inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
         }
         if (!content.isNullOrBlank()) {
           onRestoreCustomBackup?.invoke(content) { msg ->
@@ -282,6 +287,22 @@ fun SettingsScreen(
         }
       } catch (e: Exception) {
         backupMessage = "Erro ao ler arquivo: ${e.message}"
+      }
+    }
+  }
+
+  // File Creator to Save Backup Directly to Device Storage / Downloads
+  val saveFileLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json")
+  ) { uri: android.net.Uri? ->
+    if (uri != null && pendingJsonToSave != null) {
+      try {
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+          outputStream.write(pendingJsonToSave!!.toByteArray(Charsets.UTF_8))
+        }
+        backupMessage = "Arquivo de backup salvo com sucesso no aparelho!"
+      } catch (e: Exception) {
+        backupMessage = "Erro ao salvar arquivo: ${e.message}"
       }
     }
   }
@@ -1203,34 +1224,106 @@ fun SettingsScreen(
           modifier = Modifier.fillMaxWidth()
         )
 
-        if (lastGeneratedJson != null) {
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .border(1.dp, colors.rulerStrong, RectangleShape)
-              .clickable {
-                try {
-                  val sendIntent = android.content.Intent().apply {
-                    action = android.content.Intent.ACTION_SEND
-                    putExtra(android.content.Intent.EXTRA_TEXT, lastGeneratedJson)
-                    type = "text/plain"
-                  }
-                  context.startActivity(android.content.Intent.createChooser(sendIntent, "Compartilhar / Salvar Backup JSON"))
-                } catch (e: Exception) {
-                  backupMessage = "Erro ao abrir compartilhamento: ${e.message}"
+        // Share File Option (.json)
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              val jsonToShare = lastGeneratedJson ?: onGetLastBackupJson?.invoke()
+              if (jsonToShare != null) {
+                val err = onShareBackup?.invoke(jsonToShare)
+                if (err != null) {
+                  backupMessage = err
+                } else {
+                  backupMessage = "Compartilhando arquivo de backup..."
+                }
+              } else {
+                onCreateBackup?.invoke { freshJson ->
+                  lastGeneratedJson = freshJson
+                  lastBackupText = java.time.LocalDateTime.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                  )
+                  val err = onShareBackup?.invoke(freshJson)
+                  backupMessage = err ?: "Compartilhando arquivo de backup..."
                 }
               }
-              .padding(vertical = 10.dp),
-            contentAlignment = Alignment.Center
-          ) {
-            Text(
-              text = "📤 Compartilhar / Exportar JSON do Backup",
-              fontFamily = ArchivoFont,
-              fontWeight = FontWeight.Bold,
-              fontSize = 11.5.sp,
-              color = colors.text
-            )
-          }
+            }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "📤 Compartilhar Arquivo (.json)",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+
+        // Save File to Downloads / Phone Storage
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              val jsonToExport = lastGeneratedJson ?: onGetLastBackupJson?.invoke()
+              if (jsonToExport != null) {
+                pendingJsonToSave = jsonToExport
+                val dateStr = java.time.LocalDate.now().toString().replace("-", "")
+                saveFileLauncher.launch("bloco_t_backup_$dateStr.json")
+              } else {
+                onCreateBackup?.invoke { freshJson ->
+                  lastGeneratedJson = freshJson
+                  pendingJsonToSave = freshJson
+                  lastBackupText = java.time.LocalDateTime.now().format(
+                    java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                  )
+                  val dateStr = java.time.LocalDate.now().toString().replace("-", "")
+                  saveFileLauncher.launch("bloco_t_backup_$dateStr.json")
+                }
+              }
+            }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "💾 Salvar Arquivo no Celular (Downloads)",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+
+        // Copy JSON Text to Clipboard
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              val jsonToCopy = lastGeneratedJson ?: onGetLastBackupJson?.invoke()
+              if (jsonToCopy != null) {
+                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(jsonToCopy))
+                backupMessage = "Texto do backup copiado para a Área de Transferência!"
+              } else {
+                onCreateBackup?.invoke { freshJson ->
+                  lastGeneratedJson = freshJson
+                  clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(freshJson))
+                  backupMessage = "Texto do backup copiado para a Área de Transferência!"
+                }
+              }
+            }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "📋 Copiar Texto do Backup (JSON)",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
         }
 
         Box(
@@ -1275,12 +1368,35 @@ fun SettingsScreen(
 
         if (showImportField) {
           Spacer(modifier = Modifier.height(4.dp))
-          Text(
-            text = "Cole o texto JSON do backup abaixo:",
-            fontFamily = ArchivoFont,
-            fontSize = 11.sp,
-            color = colors.textTertiary
-          )
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(
+              text = "Cole o texto JSON do backup abaixo:",
+              fontFamily = ArchivoFont,
+              fontSize = 11.sp,
+              color = colors.textTertiary
+            )
+            Text(
+              text = "📋 Colar",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = colors.accentDark,
+              modifier = Modifier
+                .clickable {
+                  val clip = clipboardManager.getText()?.text
+                  if (!clip.isNullOrBlank()) {
+                    importJsonText = clip
+                  } else {
+                    backupMessage = "Área de transferência está vazia."
+                  }
+                }
+                .padding(4.dp)
+            )
+          }
           Spacer(modifier = Modifier.height(4.dp))
           BasicTextField(
             value = importJsonText,
@@ -1375,7 +1491,7 @@ fun SettingsScreen(
           text = "📂 Selecionar Arquivo (.json)",
           onClick = {
             try {
-              filePickerLauncher.launch("*/*")
+              filePickerLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
             } catch (e: Exception) {
               backupMessage = "Erro ao abrir seletor de arquivos: ${e.message}"
             }
@@ -1396,7 +1512,7 @@ fun SettingsScreen(
           contentAlignment = Alignment.Center
         ) {
           Text(
-            text = "↻ Restaurar Último Backup Salvo",
+            text = "↻ Restaurar Último Backup Salvo no Aparelho",
             fontFamily = ArchivoFont,
             fontWeight = FontWeight.Bold,
             fontSize = 11.5.sp,
@@ -1405,11 +1521,34 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(6.dp))
-        Text(
-          text = "OU COLE O TEXTO JSON DO BACKUP:",
-          style = SectionLabelStyle,
-          color = colors.textTertiary
-        )
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "OU COLE O TEXTO JSON DO BACKUP:",
+            style = SectionLabelStyle,
+            color = colors.textTertiary
+          )
+          Text(
+            text = "📋 Colar da Área de Transferência",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = colors.accentDark,
+            modifier = Modifier
+              .clickable {
+                val clip = clipboardManager.getText()?.text
+                if (!clip.isNullOrBlank()) {
+                  importJsonInput = clip
+                } else {
+                  backupMessage = "Área de transferência está vazia."
+                }
+              }
+              .padding(4.dp)
+          )
+        }
         Spacer(modifier = Modifier.height(4.dp))
 
         BasicTextField(

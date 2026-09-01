@@ -220,17 +220,83 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
         .putString("last_backup_json", jsonResult)
         .putLong("last_backup_time", System.currentTimeMillis())
         .apply()
+
+      // Also persist to internal file storage so it survives shared prefs resets
+      try {
+        val backupDir = java.io.File(context.filesDir, "backups").apply { mkdirs() }
+        java.io.File(backupDir, "bloco_t_backup_latest.json").writeText(jsonResult)
+        java.io.File(backupDir, "bloco_t_backup_${System.currentTimeMillis()}.json").writeText(jsonResult)
+      } catch (_: Exception) {}
+
       onDone?.invoke(jsonResult)
+    }
+  }
+
+  fun getLastBackupJson(context: Context): String? {
+    val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
+    val fromPrefs = prefs.getString("last_backup_json", null)
+    if (!fromPrefs.isNullOrBlank()) return fromPrefs
+
+    // Fallback to file on disk
+    return try {
+      val backupFile = java.io.File(context.filesDir, "backups/bloco_t_backup_latest.json")
+      if (backupFile.exists()) backupFile.readText() else null
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  fun shareBackupFile(context: Context, jsonString: String): String? {
+    return try {
+      val cacheBackupDir = java.io.File(context.cacheDir, "shared_backups").apply { mkdirs() }
+      val backupFile = java.io.File(cacheBackupDir, "bloco_t_backup.json")
+      backupFile.writeText(jsonString)
+
+      val authority = "${context.packageName}.fileprovider"
+      val contentUri = androidx.core.content.FileProvider.getUriForFile(context, authority, backupFile)
+
+      val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "application/json"
+        putExtra(android.content.Intent.EXTRA_STREAM, contentUri)
+        putExtra(android.content.Intent.EXTRA_SUBJECT, "Backup Bloco T")
+        putExtra(android.content.Intent.EXTRA_TEXT, "Backup do Bloco T em formato JSON.")
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+
+      val chooser = android.content.Intent.createChooser(sendIntent, "Compartilhar Backup (.json)").apply {
+        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+      }
+      context.startActivity(chooser)
+      null
+    } catch (e: Exception) {
+      "Erro ao compartilhar backup: ${e.message}"
     }
   }
 
   fun restoreLastBackup(context: Context, onResult: (String) -> Unit) {
     val prefs = context.getSharedPreferences("bloco_backup_prefs", Context.MODE_PRIVATE)
-    val savedJson = prefs.getString("last_backup_json", null)
+    var savedJson = prefs.getString("last_backup_json", null)
+
+    // If SharedPreferences was cleared (e.g. app update/reinstall), try disk files
     if (savedJson.isNullOrBlank()) {
-      onResult("Nenhum backup salvo anteriormente neste aparelho. Gere um backup primeiro.")
+      try {
+        val backupDir = java.io.File(context.filesDir, "backups")
+        val latestFile = java.io.File(backupDir, "bloco_t_backup_latest.json")
+        if (latestFile.exists()) {
+          savedJson = latestFile.readText()
+        } else if (backupDir.exists()) {
+          val newestFile = backupDir.listFiles { f -> f.extension == "json" }?.maxByOrNull { it.lastModified() }
+          savedJson = newestFile?.readText()
+        }
+      } catch (_: Exception) {}
+    }
+
+    if (savedJson.isNullOrBlank()) {
+      onResult("Nenhum backup encontrado no armazenamento local. Selecione um arquivo (.json) ou cole o texto do backup.")
       return
     }
+
     viewModelScope.launch {
       try {
         val msg = repository.restoreFromBackupJson(savedJson)
