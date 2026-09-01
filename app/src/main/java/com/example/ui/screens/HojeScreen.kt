@@ -312,7 +312,7 @@ fun HojeScreen(
                       color = colors.textTertiary
                     )
                   }
-                  if (ev.attachedNoteTitle != null) {
+                  if (!ev.attachedNoteTitle.isNullOrBlank() && !ev.attachedNoteId.isNullOrBlank()) {
                     Text(
                       text = "· Post-it: ${ev.attachedNoteTitle}",
                       fontFamily = ArchivoFont,

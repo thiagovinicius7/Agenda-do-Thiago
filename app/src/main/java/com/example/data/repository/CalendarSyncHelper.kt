@@ -150,7 +150,8 @@ class CalendarSyncHelper(private val context: Context) {
                 endEpochMillis = end,
                 isAllDay = allDay,
                 location = location,
-                attachedNoteTitle = desc,
+                attachedNoteId = null,
+                attachedNoteTitle = null,
                 isLocalOnly = false,
                 isPendingSync = false
               )
@@ -216,7 +217,8 @@ class CalendarSyncHelper(private val context: Context) {
                   endEpochMillis = end,
                   isAllDay = allDay,
                   location = location,
-                  attachedNoteTitle = desc,
+                  attachedNoteId = null,
+                  attachedNoteTitle = null,
                   isLocalOnly = false,
                   isPendingSync = false
                 )

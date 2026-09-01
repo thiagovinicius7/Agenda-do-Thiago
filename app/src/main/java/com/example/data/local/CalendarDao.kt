@@ -42,6 +42,12 @@ interface CalendarDao {
   @Query("DELETE FROM calendar_events WHERE id LIKE 'gcal_%'")
   suspend fun deleteMockEvents()
 
+  @Query("UPDATE calendar_events SET attachedNoteTitle = NULL WHERE attachedNoteId IS NULL OR attachedNoteId = ''")
+  suspend fun clearOrphanedNoteTitles()
+
+  @Query("UPDATE calendar_events SET attachedNoteId = NULL, attachedNoteTitle = NULL WHERE attachedNoteTitle = ''")
+  suspend fun clearEmptyNoteTitles()
+
   @Query("SELECT * FROM calendar_events WHERE title LIKE '%' || :query || '%'")
   fun searchEvents(query: String): Flow<List<CalendarEvent>>
 

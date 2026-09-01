@@ -269,9 +269,28 @@ class BlocoRepository(
 
     val deviceEvents = helper?.fetchDeviceEvents() ?: emptyList()
     if (deviceEvents.isNotEmpty()) {
-      calendarDao.insertEvents(deviceEvents)
+      val existingEvents = allEvents.first().associateBy { it.id }
+      val mergedEvents = deviceEvents.map { devEv ->
+        val existing = existingEvents[devEv.id]
+        if (existing != null && !existing.attachedNoteId.isNullOrBlank()) {
+          devEv.copy(
+            attachedNoteId = existing.attachedNoteId,
+            attachedNoteTitle = existing.attachedNoteTitle
+          )
+        } else {
+          devEv.copy(
+            attachedNoteId = null,
+            attachedNoteTitle = null
+          )
+        }
+      }
+      calendarDao.insertEvents(mergedEvents)
+      calendarDao.clearOrphanedNoteTitles()
+      calendarDao.clearEmptyNoteTitles()
       return deviceEvents.size
     } else {
+      calendarDao.clearOrphanedNoteTitles()
+      calendarDao.clearEmptyNoteTitles()
       return events.first().size
     }
   }
@@ -290,7 +309,7 @@ class BlocoRepository(
     // If event exists or user tapped an event with a description or note
     val noteId = "note_ev_${System.currentTimeMillis()}"
     val noteTitle = event?.title?.let { "Post-it: $it" } ?: "Post-it do compromisso"
-    val noteBody = event?.attachedNoteTitle ?: event?.location?.let { "Local: $it" } ?: ""
+    val noteBody = event?.location?.let { "Local: $it" } ?: ""
 
     val newNote = Note(
       id = noteId,
@@ -313,7 +332,7 @@ class BlocoRepository(
       calendarDao.updateEvent(
         event.copy(
           attachedNoteId = noteId,
-          attachedNoteTitle = event.attachedNoteTitle ?: event.title
+          attachedNoteTitle = noteTitle
         )
       )
     }
@@ -625,8 +644,10 @@ class BlocoRepository(
 
   // Initial categories setup and cleanup of mock data
   suspend fun seedInitialDataIfEmpty() {
-    // Always purge previous mock events
+    // Always purge previous mock events and legacy orphaned note badges
     calendarDao.deleteMockEvents()
+    calendarDao.clearOrphanedNoteTitles()
+    calendarDao.clearEmptyNoteTitles()
 
     val existingCats = categories.first()
     if (existingCats.isEmpty()) {

@@ -261,8 +261,30 @@ fun SettingsScreen(
   var showWeekStartDialog by remember { mutableStateOf(false) }
   var showExportDialog by remember { mutableStateOf(false) }
   var showBackupDialog by remember { mutableStateOf(false) }
+  var showImportDialog by remember { mutableStateOf(false) }
   var showArchiveDialog by remember { mutableStateOf(false) }
   var showClearDataDialog by remember { mutableStateOf(false) }
+
+  val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+    contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+  ) { uri: android.net.Uri? ->
+    if (uri != null) {
+      try {
+        val content = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+          inputStream.bufferedReader().use { it.readText() }
+        }
+        if (!content.isNullOrBlank()) {
+          onRestoreCustomBackup?.invoke(content) { msg ->
+            backupMessage = msg
+          }
+        } else {
+          backupMessage = "O arquivo selecionado está vazio."
+        }
+      } catch (e: Exception) {
+        backupMessage = "Erro ao ler arquivo: ${e.message}"
+      }
+    }
+  }
 
   Column(
     modifier = modifier
@@ -623,6 +645,22 @@ fun SettingsScreen(
           Text(text = "Salvar cópia completa local", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
         }
         Text(text = "$lastBackupText →", fontFamily = ArchivoFont, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, color = colors.textSecondary)
+      }
+      Ruler1dp()
+
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { showImportDialog = true }
+          .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Column {
+          Text(text = "Importar Backup", fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.text)
+          Text(text = "Restaurar dados a partir de arquivo (.json) ou texto", fontFamily = ArchivoFont, fontSize = 10.5.sp, color = colors.textSecondary)
+        }
+        Text(text = "Importar →", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.accentDark)
       }
       Ruler1dp()
 
@@ -1217,7 +1255,147 @@ fun SettingsScreen(
     }
   }
 
-  // 8. Archive Dialog
+  // 8. Dedicated Import Backup Dialog
+  if (showImportDialog) {
+    var importJsonInput by remember { mutableStateOf("") }
+
+    ModernistSimpleDialog(
+      title = "IMPORTAR BACKUP",
+      onDismiss = {
+        showImportDialog = false
+        backupMessage = null
+      }
+    ) {
+      Text(
+        text = "Restaure seus post-its, checklists, hábitos e agenda a partir de um arquivo de backup ou texto JSON.",
+        fontFamily = ArchivoFont,
+        fontSize = 12.5.sp,
+        color = colors.text
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+
+      if (!backupMessage.isNullOrBlank()) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.accent.copy(alpha = 0.12f))
+            .border(1.dp, colors.accent, RectangleShape)
+            .padding(10.dp)
+        ) {
+          Text(
+            text = backupMessage ?: "",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+      }
+
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        ModernistButton(
+          text = "📂 Selecionar Arquivo (.json)",
+          onClick = {
+            try {
+              filePickerLauncher.launch("*/*")
+            } catch (e: Exception) {
+              backupMessage = "Erro ao abrir seletor de arquivos: ${e.message}"
+            }
+          },
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              onRestoreLastBackup?.invoke { resultMsg ->
+                backupMessage = resultMsg
+              }
+            }
+            .padding(vertical = 11.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "↻ Restaurar Último Backup Salvo",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+          text = "OU COLE O TEXTO JSON DO BACKUP:",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+
+        BasicTextField(
+          value = importJsonInput,
+          onValueChange = { importJsonInput = it },
+          textStyle = TextStyle(
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.text
+          ),
+          decorationBox = { innerTextField ->
+            if (importJsonInput.isEmpty()) {
+              Text(
+                text = "Cole o conteúdo JSON aqui...",
+                fontFamily = ArchivoFont,
+                fontSize = 11.sp,
+                color = colors.textTertiary
+              )
+            }
+            innerTextField()
+          },
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(110.dp)
+            .background(colors.track)
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .padding(8.dp)
+        )
+
+        Spacer(modifier = Modifier.height(4.dp))
+        ModernistButton(
+          text = "Restaurar a Partir Deste JSON",
+          onClick = {
+            if (importJsonInput.isNotBlank()) {
+              onRestoreCustomBackup?.invoke(importJsonInput) { resultMsg ->
+                backupMessage = resultMsg
+                importJsonInput = ""
+              }
+            } else {
+              backupMessage = "Cole o texto do backup no campo antes de restaurar."
+            }
+          },
+          modifier = Modifier.fillMaxWidth()
+        )
+      }
+
+      Spacer(modifier = Modifier.height(14.dp))
+      ModernistButton(
+        text = "Fechar",
+        onClick = {
+          showImportDialog = false
+          backupMessage = null
+        },
+        isPrimary = false,
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+  }
+
+  // 9. Archive Dialog
   if (showArchiveDialog) {
     ModernistSimpleDialog(
       title = "ARQUIVO DE NOTAS",

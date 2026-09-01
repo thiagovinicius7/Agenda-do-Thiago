@@ -454,7 +454,7 @@ private fun AgendaMonthView(
                 fontSize = 13.sp,
                 color = colors.text
               )
-              if (ev.attachedNoteTitle != null) {
+              if (!ev.attachedNoteTitle.isNullOrBlank() && !ev.attachedNoteId.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                   modifier = Modifier
@@ -706,7 +706,7 @@ private fun AgendaDayView(
                     fontSize = 12.5.sp,
                     color = colors.text
                   )
-                  if (ev.attachedNoteTitle != null) {
+                  if (!ev.attachedNoteTitle.isNullOrBlank() && !ev.attachedNoteId.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                       text = "Post-it: ${ev.attachedNoteTitle}",
@@ -1521,7 +1521,7 @@ fun EventDetailScreen(
         // Attached Post-It Note
         Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
         Spacer(modifier = Modifier.height(6.dp))
-        if (event.attachedNoteTitle != null) {
+        if (!event.attachedNoteTitle.isNullOrBlank() && !event.attachedNoteId.isNullOrBlank()) {
           Row(
             modifier = Modifier
               .fillMaxWidth()
@@ -1539,7 +1539,7 @@ fun EventDetailScreen(
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
               Text(
-                text = event.attachedNoteTitle,
+                text = event.attachedNoteTitle ?: "",
                 fontFamily = ArchivoFont,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 13.sp,
