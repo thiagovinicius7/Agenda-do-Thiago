@@ -277,6 +277,9 @@ fun BlocoApp(
               },
               onToggleItem = { itemId, currentDone ->
                 viewModel.toggleChecklistItem(itemId, currentDone)
+              },
+              onDelete = { noteId ->
+                viewModel.deleteNote(noteId)
               }
             )
           }
@@ -298,7 +301,10 @@ fun BlocoApp(
               onTestNotification = { habitName ->
                 viewModel.testNotification(context, habitName)
               },
-              onEditRule = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) }
+              onEditRule = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
+              onDeleteHabit = { habitId ->
+                viewModel.deleteHabit(habitId)
+              }
             )
           }
           ActiveOverlay.HABIT_CREATE -> {
@@ -342,6 +348,7 @@ fun BlocoApp(
               calendar = eventCalendar,
               onBack = { viewModel.closeOverlay() },
               onOpenNote = { noteId -> viewModel.openNote(noteId) },
+              onAttachNote = { eventId -> viewModel.openNoteForEvent(eventId) },
               onDeleteEvent = { eventId -> viewModel.deleteEvent(eventId) },
               onUpdateEvent = { id, title, calId, date, hour, min, dur, noteId, noteTitle ->
                 viewModel.updateEvent(id, title, calId, date, hour, min, dur, noteId, noteTitle)
@@ -388,7 +395,17 @@ fun BlocoApp(
                     )
                   )
                 }
-              }
+              },
+              onCreateBackup = { onDone ->
+                viewModel.createBackup(context, onDone)
+              },
+              onRestoreLastBackup = { onResult ->
+                viewModel.restoreLastBackup(context, onResult)
+              },
+              onRestoreCustomBackup = { json, onResult ->
+                viewModel.restoreFromBackupJson(context, json, onResult)
+              },
+              lastBackupInfo = viewModel.getLastBackupInfo(context)
             )
           }
           ActiveOverlay.ONBOARDING -> {

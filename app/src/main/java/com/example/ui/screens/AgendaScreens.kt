@@ -1228,6 +1228,7 @@ fun EventDetailScreen(
   calendar: GoogleCalendar?,
   onBack: () -> Unit,
   onOpenNote: (String) -> Unit = {},
+  onAttachNote: ((String) -> Unit)? = null,
   onDeleteEvent: (String) -> Unit,
   onUpdateEvent: (id: String, title: String, calendarId: String, date: LocalDate, hour: Int, minute: Int, duration: Int, noteId: String?, noteTitle: String?) -> Unit,
   modifier: Modifier = Modifier
@@ -1518,9 +1519,9 @@ fun EventDetailScreen(
         }
 
         // Attached Post-It Note
+        Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
+        Spacer(modifier = Modifier.height(6.dp))
         if (event.attachedNoteTitle != null) {
-          Text(text = "POST-IT ANEXADO", style = SectionLabelStyle, color = colors.textTertiary)
-          Spacer(modifier = Modifier.height(6.dp))
           Row(
             modifier = Modifier
               .fillMaxWidth()
@@ -1559,8 +1560,52 @@ fun EventDetailScreen(
               color = colors.accentDark
             )
           }
-          Spacer(modifier = Modifier.height(16.dp))
+        } else {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .background(colors.canvas)
+              .clickable {
+                if (onAttachNote != null) {
+                  onAttachNote(event.id)
+                } else if (event.attachedNoteId != null) {
+                  onOpenNote(event.attachedNoteId)
+                }
+              }
+              .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+              Box(modifier = Modifier.size(10.dp).background(colors.accent))
+              Spacer(modifier = Modifier.width(10.dp))
+              Column {
+                Text(
+                  text = "+ Anexar Post-It a este compromisso",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 12.sp,
+                  color = colors.text
+                )
+                Text(
+                  text = "Crie anotações, atas ou checklist vinculados",
+                  fontFamily = ArchivoFont,
+                  fontSize = 10.sp,
+                  color = colors.textSecondary
+                )
+              }
+            }
+            Text(
+              text = "Criar →",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = colors.accentDark
+            )
+          }
         }
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Protection note
         if (isProtected) {

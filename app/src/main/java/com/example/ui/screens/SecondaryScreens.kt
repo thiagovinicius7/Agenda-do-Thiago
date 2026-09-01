@@ -209,9 +209,14 @@ fun SettingsScreen(
   onSelectAllCalendars: ((Boolean) -> Unit)? = null,
   onClearData: (() -> Unit)? = null,
   onSyncCalendar: (() -> Unit)? = null,
+  onCreateBackup: (((String) -> Unit) -> Unit)? = null,
+  onRestoreLastBackup: (((String) -> Unit) -> Unit)? = null,
+  onRestoreCustomBackup: ((String, (String) -> Unit) -> Unit)? = null,
+  lastBackupInfo: String? = null,
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
+  val context = androidx.compose.ui.platform.LocalContext.current
   val scrollState = rememberScrollState()
 
   // User State
@@ -226,7 +231,9 @@ fun SettingsScreen(
   var countInDays by remember { mutableStateOf(true) }
   var weekStart by remember { mutableStateOf("Domingo") }
   var lastSyncText by remember { mutableStateOf("agora mesmo") }
-  var lastBackupText by remember { mutableStateOf("hoje 06:00") }
+  var lastBackupText by remember(lastBackupInfo) { mutableStateOf(lastBackupInfo ?: "Nenhum salvo") }
+  var backupMessage by remember { mutableStateOf<String?>(null) }
+  var lastGeneratedJson by remember { mutableStateOf<String?>(null) }
 
   // Categories list
   var categories by remember {
@@ -1018,22 +1025,193 @@ fun SettingsScreen(
     }
   }
 
-  // 7. Backup Dialog
+  // 7. Backup & Restore Dialog
   if (showBackupDialog) {
+    var importJsonText by remember { mutableStateOf("") }
+    var showImportField by remember { mutableStateOf(false) }
+
     ModernistSimpleDialog(
-      title = "BACKUP REALIZADO",
-      onDismiss = { showBackupDialog = false }
+      title = "BACKUP & RESTAURAÇÃO",
+      onDismiss = {
+        showBackupDialog = false
+        backupMessage = null
+        showImportField = false
+      }
     ) {
       Text(
-        text = "Cópia de segurança do banco de dados local gerada com sucesso.",
+        text = "Guarde e restaure seus post-its, hábitos e eventos a qualquer momento.",
         fontFamily = ArchivoFont,
         fontSize = 12.5.sp,
         color = colors.text
       )
+      Spacer(modifier = Modifier.height(12.dp))
+
+      if (!backupMessage.isNullOrBlank()) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.accent.copy(alpha = 0.12f))
+            .border(1.dp, colors.accent, RectangleShape)
+            .padding(10.dp)
+        ) {
+          Text(
+            text = backupMessage ?: "",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+      }
+
+      Text(
+        text = "ÚLTIMO BACKUP: $lastBackupText",
+        style = SectionLabelStyle,
+        color = colors.textTertiary
+      )
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Backup Actions
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        ModernistButton(
+          text = "💾 Gerar Novo Backup Agora",
+          onClick = {
+            onCreateBackup?.invoke { json ->
+              lastGeneratedJson = json
+              lastBackupText = java.time.LocalDateTime.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+              )
+              backupMessage = "Backup gerado e salvo com sucesso no aparelho!"
+            }
+          },
+          modifier = Modifier.fillMaxWidth()
+        )
+
+        if (lastGeneratedJson != null) {
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .clickable {
+                try {
+                  val sendIntent = android.content.Intent().apply {
+                    action = android.content.Intent.ACTION_SEND
+                    putExtra(android.content.Intent.EXTRA_TEXT, lastGeneratedJson)
+                    type = "text/plain"
+                  }
+                  context.startActivity(android.content.Intent.createChooser(sendIntent, "Compartilhar / Salvar Backup JSON"))
+                } catch (e: Exception) {
+                  backupMessage = "Erro ao abrir compartilhamento: ${e.message}"
+                }
+              }
+              .padding(vertical = 10.dp),
+            contentAlignment = Alignment.Center
+          ) {
+            Text(
+              text = "📤 Compartilhar / Exportar JSON do Backup",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.5.sp,
+              color = colors.text
+            )
+          }
+        }
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable {
+              onRestoreLastBackup?.invoke { resultMsg ->
+                backupMessage = resultMsg
+              }
+            }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = "↻ Restaurar Último Backup Salvo",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.5.sp,
+            color = colors.text
+          )
+        }
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.rulerWeak, RectangleShape)
+            .clickable {
+              showImportField = !showImportField
+            }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            text = if (showImportField) "▲ Esconder campo de importação" else "▼ Importar colando JSON",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+
+        if (showImportField) {
+          Spacer(modifier = Modifier.height(4.dp))
+          Text(
+            text = "Cole o texto JSON do backup abaixo:",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textTertiary
+          )
+          Spacer(modifier = Modifier.height(4.dp))
+          BasicTextField(
+            value = importJsonText,
+            onValueChange = { importJsonText = it },
+            textStyle = TextStyle(
+              fontFamily = ArchivoFont,
+              fontSize = 11.sp,
+              color = colors.text
+            ),
+            modifier = Modifier
+              .fillMaxWidth()
+              .height(100.dp)
+              .background(colors.track)
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .padding(8.dp)
+          )
+          Spacer(modifier = Modifier.height(6.dp))
+          ModernistButton(
+            text = "Restaurar a partir deste JSON",
+            onClick = {
+              if (importJsonText.isNotBlank()) {
+                onRestoreCustomBackup?.invoke(importJsonText) { resultMsg ->
+                  backupMessage = resultMsg
+                  importJsonText = ""
+                }
+              } else {
+                backupMessage = "Cole o conteúdo do backup antes de restaurar."
+              }
+            },
+            modifier = Modifier.fillMaxWidth()
+          )
+        }
+      }
+
       Spacer(modifier = Modifier.height(14.dp))
       ModernistButton(
-        text = "OK",
-        onClick = { showBackupDialog = false },
+        text = "Fechar",
+        onClick = {
+          showBackupDialog = false
+          backupMessage = null
+          showImportField = false
+        },
+        isPrimary = false,
         modifier = Modifier.fillMaxWidth()
       )
     }
