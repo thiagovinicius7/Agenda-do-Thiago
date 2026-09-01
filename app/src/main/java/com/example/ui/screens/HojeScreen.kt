@@ -36,6 +36,7 @@ import com.example.ui.components.Ruler2dp
 import com.example.ui.theme.ArchivoFont
 import com.example.ui.theme.LocalBlocoColors
 import com.example.ui.theme.SectionLabelStyle
+import com.example.util.HabitCalculations
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -85,7 +86,17 @@ fun HojeScreen(
 
   val targetEpochDay = selectedDate.toEpochDay()
 
-  val doneHabitsCount = habits.count { habitRes ->
+  // Filter habits to ONLY those scheduled for this specific day according to its recurrence rule
+  val scheduledHabits = habits.filter { habitRes ->
+    val h = habitRes.habit
+    val started = targetEpochDay >= h.startDateEpochDay
+    val notEnded = (h.durationDays <= 0) || (targetEpochDay < (h.startDateEpochDay + h.durationDays))
+    val inRule = HabitCalculations.isDateInRule(h, targetEpochDay)
+    val notPaused = !HabitCalculations.isDatePaused(h, targetEpochDay)
+    started && notEnded && inRule && notPaused
+  }
+
+  val doneHabitsCount = scheduledHabits.count { habitRes ->
     val cell = habitRes.gridCells.find { it.dateEpochDay == targetEpochDay }
     cell?.state == GridCellState.DONE
   }
@@ -187,9 +198,9 @@ fun HojeScreen(
           color = colors.text
         )
 
-        if (habits.isNotEmpty()) {
+        if (scheduledHabits.isNotEmpty()) {
           Text(
-            text = "$doneHabitsCount/${habits.size} feitos",
+            text = "$doneHabitsCount/${scheduledHabits.size} feitos",
             fontFamily = ArchivoFont,
             fontWeight = FontWeight.SemiBold,
             fontSize = 11.sp,
@@ -368,7 +379,7 @@ fun HojeScreen(
           .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
       ) {
-        if (habits.isEmpty()) {
+        if (scheduledHabits.isEmpty()) {
           Box(
             modifier = Modifier
               .fillMaxWidth()
@@ -376,14 +387,14 @@ fun HojeScreen(
               .padding(vertical = 12.dp)
           ) {
             Text(
-              text = "+ Nenhum hábito cadastrado. Toque para iniciar um hábito.",
+              text = if (habits.isEmpty()) "+ Nenhum hábito cadastrado. Toque para iniciar um hábito." else "+ Nenhum hábito programado para este dia. Toque para criar outro.",
               fontFamily = ArchivoFont,
               fontSize = 12.sp,
               color = colors.textTertiary
             )
           }
         } else {
-          for (habitRes in habits) {
+          for (habitRes in scheduledHabits) {
             val h = habitRes.habit
             val cellForDay = habitRes.gridCells.find { it.dateEpochDay == targetEpochDay }
             val isDone = cellForDay?.state == GridCellState.DONE

@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -739,10 +740,12 @@ private fun AgendaDayView(
 @Composable
 fun EventCreateScreen(
   calendars: List<GoogleCalendar> = emptyList(),
+  initialDate: LocalDate? = null,
   onBack: () -> Unit,
   onSave: (title: String, calendarId: String, date: LocalDate, hour: Int, minute: Int, duration: Int, noteId: String?, noteTitle: String?, localOnly: Boolean) -> Unit,
   modifier: Modifier = Modifier
 ) {
+  val context = androidx.compose.ui.platform.LocalContext.current
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
@@ -751,7 +754,7 @@ fun EventCreateScreen(
     mutableStateOf(calendars.firstOrNull { it.isSelected }?.id ?: "cal_pessoal")
   }
   val today = remember { LocalDate.now() }
-  var selectedDate by remember { mutableStateOf(today) }
+  var selectedDate by remember(initialDate) { mutableStateOf(initialDate ?: today) }
   var selectedHour by remember { mutableStateOf(14) }
   var selectedMinute by remember { mutableStateOf(0) }
   var selectedDuration by remember { mutableStateOf(60) }
@@ -765,20 +768,33 @@ fun EventCreateScreen(
     Pair("Hoje", today),
     Pair("Amanhã", today.plusDays(1)),
     Pair("+2 dias", today.plusDays(2)),
-    Pair("+3 dias", today.plusDays(3)),
-    Pair("+4 dias", today.plusDays(4))
+    Pair("+7 dias", today.plusDays(7)),
+    Pair("+30 dias", today.plusDays(30))
   )
 
   val hourOptions = listOf(8, 9, 10, 11, 14, 15, 16, 18, 19, 20)
   val durationOptions = listOf(Pair("30m", 30), Pair("1h", 60), Pair("1h30", 90), Pair("2h", 120))
 
   val formattedSelectedDate = selectedDate.format(
-    DateTimeFormatter.ofPattern("d 'de' MMMM", Locale("pt", "BR"))
-  )
+    DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM 'de' yyyy", Locale("pt", "BR"))
+  ).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("pt", "BR")) else it.toString() }
+
   val timeDisplay = if (isAllDay) {
     "Dia inteiro"
   } else {
     String.format("%02d:%02d — %02d:%02d", selectedHour, selectedMinute, (selectedHour + (selectedDuration / 60)) % 24, (selectedMinute + (selectedDuration % 60)) % 60)
+  }
+
+  val openDatePicker = {
+    android.app.DatePickerDialog(
+      context,
+      { _, year, month, dayOfMonth ->
+        selectedDate = LocalDate.of(year, month + 1, dayOfMonth)
+      },
+      selectedDate.year,
+      selectedDate.monthValue - 1,
+      selectedDate.dayOfMonth
+    ).show()
   }
 
   Column(
@@ -832,7 +848,7 @@ fun EventCreateScreen(
 
       Spacer(modifier = Modifier.height(20.dp))
 
-      // Date and Time Summary Matrix
+      // Date and Time Summary Matrix (Clickable to change date/time)
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -840,29 +856,126 @@ fun EventCreateScreen(
           .border(1.dp, colors.rulerStrong, RectangleShape),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
       ) {
-        Column(modifier = Modifier.weight(1f).background(colors.canvas).padding(12.dp)) {
-          Text(text = "DATA", style = SectionLabelStyle, color = colors.textTertiary)
+        Column(
+          modifier = Modifier
+            .weight(1.3f)
+            .background(colors.canvas)
+            .clickable { openDatePicker() }
+            .padding(12.dp)
+        ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Text(text = "DATA", style = SectionLabelStyle, color = colors.textTertiary)
+            Text(text = "Mudar 📅", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = colors.accentDark)
+          }
           Spacer(modifier = Modifier.height(4.dp))
-          Text(text = formattedSelectedDate, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.text)
+          Text(text = formattedSelectedDate, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, lineHeight = 16.sp, color = colors.text)
         }
-        Column(modifier = Modifier.weight(1f).background(colors.canvas).padding(12.dp)) {
+        Column(modifier = Modifier.weight(0.9f).background(colors.canvas).padding(12.dp)) {
           Text(text = "HORÁRIO", style = SectionLabelStyle, color = colors.textTertiary)
           Spacer(modifier = Modifier.height(4.dp))
-          Text(text = timeDisplay, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = colors.accentDark)
+          Text(text = timeDisplay, fontFamily = ArchivoFont, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = colors.accentDark)
         }
       }
 
       Spacer(modifier = Modifier.height(14.dp))
-      Text(text = "SELECIONAR DIA", style = SectionLabelStyle, color = colors.textTertiary)
-      Spacer(modifier = Modifier.height(6.dp))
+
+      // Date Stepper controls & Calendar picker button
       Row(
         modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(text = "ESCOLHER DATA", style = SectionLabelStyle, color = colors.textTertiary)
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.accentDark, RectangleShape)
+            .clickable { openDatePicker() }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+          Text(
+            text = "📅 Abrir Calendário",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.5.sp,
+            color = colors.accentDark
+          )
+        }
+      }
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Stepper row
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .border(1.dp, colors.rulerStrong, RectangleShape)
+          .padding(6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { selectedDate = selectedDate.minusDays(1) }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+          Text(text = "◀ -1 dia", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+        }
+
+        Box(
+          modifier = Modifier
+            .background(if (selectedDate == today) colors.accent else Color.Transparent)
+            .border(1.dp, if (selectedDate == today) colors.accent else colors.rulerWeak, RectangleShape)
+            .clickable { selectedDate = today }
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+          Text(
+            text = "Hoje",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 11.sp,
+            color = if (selectedDate == today) Color.White else colors.text
+          )
+        }
+
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { selectedDate = selectedDate.plusDays(1) }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+          Text(text = "+1 dia ▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+        }
+
+        Box(
+          modifier = Modifier
+            .border(1.dp, colors.rulerStrong, RectangleShape)
+            .clickable { selectedDate = selectedDate.plusDays(7) }
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+          Text(text = "+7 dias ▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+        }
+      }
+
+      Spacer(modifier = Modifier.height(8.dp))
+
+      // Quick Chips
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
       ) {
         for ((label, dateVal) in dateOptions) {
           ViewModeChip(label, isSelected = selectedDate == dateVal) {
             selectedDate = dateVal
           }
+        }
+        ViewModeChip("📅 Outra data...", isSelected = false) {
+          openDatePicker()
         }
       }
 

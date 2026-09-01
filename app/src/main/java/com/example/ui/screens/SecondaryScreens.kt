@@ -710,6 +710,80 @@ fun SettingsScreen(
         )
       }
 
+      Spacer(modifier = Modifier.height(24.dp))
+      Ruler2dp()
+
+      // SOBRE O APLICATIVO E CRÉDITOS
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(colors.surfaceElevated)
+          .padding(16.dp)
+      ) {
+        Text(
+          text = "INFORMAÇÕES DO SISTEMA",
+          style = SectionLabelStyle,
+          color = colors.textTertiary
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Versão do App",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            color = colors.text
+          )
+          Box(
+            modifier = Modifier
+              .background(colors.rulerStrong)
+              .border(1.dp, colors.rulerWeak, RectangleShape)
+              .padding(horizontal = 8.dp, vertical = 3.dp)
+          ) {
+            Text(
+              text = "v1.2.0 (Build 4)",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 11.5.sp,
+              color = colors.accentDark
+            )
+          }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Text(
+            text = "Autoria",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Normal,
+            fontSize = 12.sp,
+            color = colors.textSecondary
+          )
+          Text(
+            text = "Desenvolvido por Thiago Leite",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.5.sp,
+            color = colors.text
+          )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Text(
+          text = "Bloco T · Sistema Modernista de Produtividade, Hábitos & Agenda Integrada.",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Normal,
+          fontSize = 10.5.sp,
+          color = colors.textTertiary
+        )
+      }
+
       Spacer(modifier = Modifier.height(40.dp))
     }
   }

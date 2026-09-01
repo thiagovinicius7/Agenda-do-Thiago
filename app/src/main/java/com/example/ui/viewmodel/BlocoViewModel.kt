@@ -170,6 +170,10 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     _uiState.value = _uiState.value.copy(selectedHabitId = habitId, activeOverlay = ActiveOverlay.HABIT_DETAIL)
   }
 
+  fun openHabitCreate() {
+    _uiState.value = _uiState.value.copy(selectedHabitId = null, activeOverlay = ActiveOverlay.HABIT_CREATE)
+  }
+
   fun openEvent(eventId: String) {
     _uiState.value = _uiState.value.copy(selectedEventId = eventId, activeOverlay = ActiveOverlay.EVENT_DETAIL)
   }
@@ -354,6 +358,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
   }
 
   fun saveHabit(
+    id: String? = null,
     name: String,
     repeatType: RepeatType,
     repeatDays: String,
@@ -365,19 +370,41 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     context: Context? = null
   ) {
     viewModelScope.launch {
-      val habitId = "habit_${System.currentTimeMillis()}"
+      val isExisting = !id.isNullOrBlank()
+      val habitId = if (isExisting) id!! else "habit_${System.currentTimeMillis()}"
       val habitName = name.ifBlank { "Novo hábito" }
-      val habit = Habit(
-        id = habitId,
-        name = habitName,
-        repeatType = repeatType,
-        repeatDays = repeatDays,
-        durationDays = durationDays,
-        startDateEpochDay = startDateEpochDay,
-        reminderTime = reminderTime,
-        showInCalendar = showInCalendar
-      )
-      repository.insertHabit(habit)
+
+      val existingHabits = repository.activeHabits.first()
+      val existingHabit = existingHabits.find { it.id == habitId }
+
+      val habit = if (existingHabit != null) {
+        existingHabit.copy(
+          name = habitName,
+          repeatType = repeatType,
+          repeatDays = repeatDays,
+          durationDays = durationDays,
+          startDateEpochDay = startDateEpochDay,
+          reminderTime = reminderTime,
+          showInCalendar = showInCalendar
+        )
+      } else {
+        Habit(
+          id = habitId,
+          name = habitName,
+          repeatType = repeatType,
+          repeatDays = repeatDays,
+          durationDays = durationDays,
+          startDateEpochDay = startDateEpochDay,
+          reminderTime = reminderTime,
+          showInCalendar = showInCalendar
+        )
+      }
+
+      if (isExisting && existingHabit != null) {
+        repository.updateHabit(habit)
+      } else {
+        repository.insertHabit(habit)
+      }
 
       // If user selected a start date in the past and opted to mark past days as done
       val todayEpoch = HabitCalculations.todayEpochDay()
@@ -385,17 +412,25 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
         repository.markPastHabitDays(habitId, startDateEpochDay, todayEpoch - 1, true)
       }
 
-      // Schedule notification alarm if reminder is set and context is provided
-      if (context != null && reminderTime.isNotBlank() && reminderTime != "Desativado") {
-        HabitNotificationScheduler.scheduleHabitReminder(
-          context = context,
-          habitId = habitId,
-          habitName = habitName,
-          reminderTime = reminderTime
-        )
+      // Schedule or cancel notification alarm if reminder is set and context is provided
+      if (context != null) {
+        if (reminderTime.isNotBlank() && reminderTime != "Desativado") {
+          HabitNotificationScheduler.scheduleHabitReminder(
+            context = context,
+            habitId = habitId,
+            habitName = habitName,
+            reminderTime = reminderTime
+          )
+        } else {
+          HabitNotificationScheduler.cancelHabitReminder(context, habitId)
+        }
       }
 
-      closeOverlay()
+      if (isExisting) {
+        _uiState.value = _uiState.value.copy(activeOverlay = ActiveOverlay.HABIT_DETAIL, selectedHabitId = habitId)
+      } else {
+        closeOverlay()
+      }
     }
   }
 

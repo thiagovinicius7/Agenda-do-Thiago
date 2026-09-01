@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import java.time.LocalDate
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -203,7 +204,7 @@ fun BlocoApp(
                   onOpenNote = { noteId -> viewModel.openNote(noteId) },
                   onOpenEvent = { eventId -> viewModel.openEvent(eventId) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
-                  onCreateHabit = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
+                  onCreateHabit = { viewModel.openHabitCreate() },
                   onCreateNote = { viewModel.openNote("") }
                 )
               }
@@ -255,7 +256,7 @@ fun BlocoApp(
                 HabitsListScreen(
                   habits = habits,
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
-                  onCreateHabit = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
+                  onCreateHabit = { viewModel.openHabitCreate() },
                   onOpenStats = { viewModel.setOverlay(ActiveOverlay.STATS) },
                   onToggleHabit = { viewModel.toggleHabitDay(it) }
                 )
@@ -308,10 +309,19 @@ fun BlocoApp(
             )
           }
           ActiveOverlay.HABIT_CREATE -> {
+            val editingHabit = habits.find { it.habit.id == uiState.selectedHabitId }?.habit
             HabitCreateScreen(
-              onBack = { viewModel.closeOverlay() },
+              initialHabit = editingHabit,
+              onBack = {
+                if (editingHabit != null) {
+                  viewModel.setOverlay(ActiveOverlay.HABIT_DETAIL)
+                } else {
+                  viewModel.closeOverlay()
+                }
+              },
               onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay, markPast ->
                 viewModel.saveHabit(
+                  id = editingHabit?.id,
                   name = name,
                   repeatType = repeatType,
                   repeatDays = repeatDays,
@@ -332,8 +342,10 @@ fun BlocoApp(
             HabitConcludedScreen(onBack = { viewModel.closeOverlay() })
           }
           ActiveOverlay.EVENT_CREATE -> {
+            val defaultDate = uiState.selectedCalendarDate ?: uiState.selectedHojeDate ?: LocalDate.now()
             EventCreateScreen(
               calendars = calendars,
+              initialDate = defaultDate,
               onBack = { viewModel.closeOverlay() },
               onSave = { title, calId, date, hour, min, dur, noteId, noteTitle, localOnly ->
                 viewModel.saveEvent(title, calId, date, hour, min, dur, noteId, noteTitle, localOnly)

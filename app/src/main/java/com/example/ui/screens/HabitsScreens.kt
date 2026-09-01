@@ -884,6 +884,7 @@ fun HabitDetailScreen(
 
 @Composable
 fun HabitCreateScreen(
+  initialHabit: Habit? = null,
   onBack: () -> Unit,
   onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean, startDateEpochDay: Long, markPastDays: Boolean) -> Unit,
   onTestNotification: (String) -> Unit = {},
@@ -892,17 +893,35 @@ fun HabitCreateScreen(
   val colors = LocalBlocoColors.current
   val scrollState = rememberScrollState()
 
-  var name by remember { mutableStateOf("Corrida") }
-  var repeatType by remember { mutableStateOf(RepeatType.DAYS_OF_WEEK) }
-  var selectedDays by remember { mutableStateOf(setOf(1, 2, 3, 4, 5, 6)) } // Mon-Sat
-  var durationDays by remember { mutableIntStateOf(150) }
+  val isEditing = initialHabit != null
+  var name by remember(initialHabit) { mutableStateOf(initialHabit?.name ?: "Corrida") }
+  var repeatType by remember(initialHabit) { mutableStateOf(initialHabit?.repeatType ?: RepeatType.DAYS_OF_WEEK) }
+  var selectedDays by remember(initialHabit) {
+    mutableStateOf(
+      initialHabit?.repeatDays?.split(",")?.mapNotNull { it.trim().toIntOrNull() }?.toSet()?.ifEmpty { setOf(1, 2, 3, 4, 5, 6) }
+        ?: setOf(1, 2, 3, 4, 5, 6)
+    )
+  }
+  var durationDays by remember(initialHabit) { mutableIntStateOf(initialHabit?.durationDays ?: 150) }
   val today = remember { LocalDate.now() }
-  var startDate by remember { mutableStateOf(today) }
+  var startDate by remember(initialHabit) {
+    mutableStateOf(
+      initialHabit?.startDateEpochDay?.let { LocalDate.ofEpochDay(it) } ?: today
+    )
+  }
   var markPastDaysAsDone by remember { mutableStateOf(false) }
-  var showInCalendar by remember { mutableStateOf(true) }
+  var showInCalendar by remember(initialHabit) { mutableStateOf(initialHabit?.showInCalendar ?: true) }
   var pauseAllowed by remember { mutableStateOf(false) }
-  var reminderEnabled by remember { mutableStateOf(true) }
-  var reminderTime by remember { mutableStateOf("08:00") }
+  var reminderEnabled by remember(initialHabit) {
+    mutableStateOf(
+      if (initialHabit != null) (initialHabit.reminderEnabled && initialHabit.reminderTime != "Desativado" && initialHabit.reminderTime.isNotBlank()) else true
+    )
+  }
+  var reminderTime by remember(initialHabit) {
+    mutableStateOf(
+      if (initialHabit?.reminderTime.isNullOrBlank() || initialHabit?.reminderTime == "Desativado") "08:00" else initialHabit!!.reminderTime
+    )
+  }
   var testNotificationSent by remember { mutableStateOf(false) }
 
   val ptBr = remember { Locale("pt", "BR") }
@@ -912,7 +931,7 @@ fun HabitCreateScreen(
   val isStartInPast = startDate.isBefore(today)
 
   val dummyHabit = Habit(
-    id = "new",
+    id = initialHabit?.id ?: "new",
     name = name,
     repeatType = repeatType,
     repeatDays = selectedDays.joinToString(","),
@@ -937,7 +956,7 @@ fun HabitCreateScreen(
       verticalAlignment = Alignment.CenterVertically
     ) {
       Text(
-        text = "Novo hábito",
+        text = if (isEditing) "Editar hábito" else "Novo hábito",
         fontFamily = ArchivoFont,
         fontWeight = FontWeight.ExtraBold,
         fontSize = 22.sp,
@@ -1322,7 +1341,7 @@ fun HabitCreateScreen(
         .padding(16.dp)
     ) {
       ModernistButton(
-        text = "Criar hábito",
+        text = if (isEditing) "Salvar alterações" else "Criar hábito",
         onClick = {
           val finalReminder = if (reminderEnabled) reminderTime else "Desativado"
           onSaveHabit(
