@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.example.data.model.Bill
+import com.example.data.model.BillPayment
 import com.example.data.model.CalendarEvent
 import com.example.data.model.Category
 import com.example.data.model.GoogleCalendar
@@ -23,9 +25,11 @@ import com.example.data.model.SyncQueueItem
     HabitMark::class,
     GoogleCalendar::class,
     CalendarEvent::class,
-    SyncQueueItem::class
+    SyncQueueItem::class,
+    Bill::class,
+    BillPayment::class
   ],
-  version = 1,
+  version = 2,
   exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -34,6 +38,7 @@ abstract class BlocoDatabase : RoomDatabase() {
   abstract fun habitDao(): HabitDao
   abstract fun calendarDao(): CalendarDao
   abstract fun syncQueueDao(): SyncQueueDao
+  abstract fun billDao(): BillDao
 
   companion object {
     @Volatile

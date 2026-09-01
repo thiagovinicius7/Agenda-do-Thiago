@@ -14,6 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,6 +58,8 @@ import com.example.data.repository.CalendarSyncHelper
 import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
 import com.example.ui.screens.AgendaScreen
+import com.example.ui.screens.BillDetailScreen
+import com.example.ui.screens.ContasScreen
 import com.example.ui.screens.EventCreateScreen
 import com.example.ui.screens.EventDetailScreen
 import com.example.ui.screens.HabitConcludedScreen
@@ -92,6 +96,7 @@ class MainActivity : ComponentActivity() {
       habitDao = database.habitDao(),
       calendarDao = database.calendarDao(),
       syncQueueDao = database.syncQueueDao(),
+      billDao = database.billDao(),
       calendarSyncHelper = syncHelper
     )
     val viewModelFactory = BlocoViewModelFactory(repository)
@@ -126,6 +131,7 @@ fun BlocoApp(
   val events by viewModel.events.collectAsState()
   val calendars by viewModel.calendars.collectAsState()
   val syncQueue by viewModel.syncQueue.collectAsState()
+  val bills by viewModel.billsWithStatus.collectAsState()
 
   val permissionLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -196,6 +202,7 @@ fun BlocoApp(
                   notes = notes,
                   events = events,
                   calendars = calendars,
+                  bills = bills,
                   selectedDate = uiState.selectedHojeDate,
                   onSelectDate = { viewModel.selectHojeDate(it) },
                   onToggleHabit = { viewModel.toggleHabitDay(it) },
@@ -203,9 +210,12 @@ fun BlocoApp(
                   onOpenHabit = { habitId -> viewModel.openHabit(habitId) },
                   onOpenNote = { noteId -> viewModel.openNote(noteId) },
                   onOpenEvent = { eventId -> viewModel.openEvent(eventId) },
+                  onOpenBill = { billId -> viewModel.openBill(billId) },
+                  onToggleBillPayment = { billStatus -> viewModel.toggleBillPayment(billStatus) },
                   onCreateEvent = { viewModel.setOverlay(ActiveOverlay.EVENT_CREATE) },
                   onCreateHabit = { viewModel.openHabitCreate() },
-                  onCreateNote = { viewModel.openNote("") }
+                  onCreateNote = { viewModel.openNote("") },
+                  onCreateBill = { viewModel.openBillCreate() }
                 )
               }
               TopSection.MURAL -> {
@@ -220,6 +230,16 @@ fun BlocoApp(
                   onCreateNewNote = {
                     viewModel.openNote("")
                   }
+                )
+              }
+              TopSection.CONTAS -> {
+                ContasScreen(
+                  bills = bills,
+                  currentCategoryFilter = uiState.billsCategoryFilter,
+                  onSelectCategoryFilter = { viewModel.setBillsCategoryFilter(it) },
+                  onOpenBill = { billId -> viewModel.openBill(billId) },
+                  onCreateBill = { viewModel.openBillCreate() },
+                  onTogglePayment = { billStatus -> viewModel.toggleBillPayment(billStatus) }
                 )
               }
               TopSection.AGENDA -> {
@@ -435,6 +455,39 @@ fun BlocoApp(
           ActiveOverlay.STATS -> {
             StatsScreen(onBack = { viewModel.closeOverlay() })
           }
+          ActiveOverlay.BILL_CREATE -> {
+            BillDetailScreen(
+              billWithStatus = null,
+              onBack = { viewModel.closeOverlay() },
+              onSave = { id, title, amt, isVar, cat, repeatType, dueDayMonth, dueDayWeek, startEpoch, customInterval, remDays, remTime, notes, barcode ->
+                viewModel.saveBill(id, title, amt, isVar, cat, repeatType, dueDayMonth, dueDayWeek, startEpoch, customInterval, remDays, remTime, notes, barcode, context)
+              },
+              onDelete = { /* no-op for create */ },
+              onTogglePayment = { /* no-op for create */ },
+              onTestNotification = { title, amt ->
+                viewModel.testBillNotification(context, title, amt)
+              }
+            )
+          }
+          ActiveOverlay.BILL_DETAIL -> {
+            val selectedBillWithStatus = bills.find { it.bill.id == uiState.selectedBillId }
+            BillDetailScreen(
+              billWithStatus = selectedBillWithStatus,
+              onBack = { viewModel.closeOverlay() },
+              onSave = { id, title, amt, isVar, cat, repeatType, dueDayMonth, dueDayWeek, startEpoch, customInterval, remDays, remTime, notes, barcode ->
+                viewModel.saveBill(id, title, amt, isVar, cat, repeatType, dueDayMonth, dueDayWeek, startEpoch, customInterval, remDays, remTime, notes, barcode, context)
+              },
+              onDelete = { billId ->
+                viewModel.deleteBill(billId, context)
+              },
+              onTogglePayment = { billStatus ->
+                viewModel.toggleBillPayment(billStatus)
+              },
+              onTestNotification = { title, amt ->
+                viewModel.testBillNotification(context, title, amt)
+              }
+            )
+          }
           ActiveOverlay.NONE -> {}
         }
       }
@@ -521,44 +574,46 @@ fun BlocoTopTabBar(
 
     Ruler1dp()
 
-    // 4 Section Tabs Row
+    // Section Tabs Row (HOJE, MURAL, CONTAS, AGENDA, HÁBITOS)
     Row(
       modifier = Modifier
         .fillMaxWidth()
         .background(colors.canvas)
+        .horizontalScroll(rememberScrollState())
         .padding(horizontal = 16.dp, vertical = 6.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
+      horizontalArrangement = Arrangement.spacedBy(16.dp),
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Row(
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-      ) {
-        TopTabItem(
-          title = "HOJE",
-          isSelected = currentSection == TopSection.HOJE,
-          testTag = "tab_hoje",
-          onClick = { onSelectSection(TopSection.HOJE) }
-        )
-        TopTabItem(
-          title = "MURAL",
-          isSelected = currentSection == TopSection.MURAL,
-          testTag = "tab_mural",
-          onClick = { onSelectSection(TopSection.MURAL) }
-        )
-        TopTabItem(
-          title = "AGENDA",
-          isSelected = currentSection == TopSection.AGENDA,
-          testTag = "tab_agenda",
-          onClick = { onSelectSection(TopSection.AGENDA) }
-        )
-        TopTabItem(
-          title = "HÁBITOS",
-          isSelected = currentSection == TopSection.HABITOS,
-          testTag = "tab_habitos",
-          onClick = { onSelectSection(TopSection.HABITOS) }
-        )
-      }
+      TopTabItem(
+        title = "HOJE",
+        isSelected = currentSection == TopSection.HOJE,
+        testTag = "tab_hoje",
+        onClick = { onSelectSection(TopSection.HOJE) }
+      )
+      TopTabItem(
+        title = "MURAL",
+        isSelected = currentSection == TopSection.MURAL,
+        testTag = "tab_mural",
+        onClick = { onSelectSection(TopSection.MURAL) }
+      )
+      TopTabItem(
+        title = "CONTAS",
+        isSelected = currentSection == TopSection.CONTAS,
+        testTag = "tab_contas",
+        onClick = { onSelectSection(TopSection.CONTAS) }
+      )
+      TopTabItem(
+        title = "AGENDA",
+        isSelected = currentSection == TopSection.AGENDA,
+        testTag = "tab_agenda",
+        onClick = { onSelectSection(TopSection.AGENDA) }
+      )
+      TopTabItem(
+        title = "HÁBITOS",
+        isSelected = currentSection == TopSection.HABITOS,
+        testTag = "tab_habitos",
+        onClick = { onSelectSection(TopSection.HABITOS) }
+      )
     }
 
     Ruler2dp()

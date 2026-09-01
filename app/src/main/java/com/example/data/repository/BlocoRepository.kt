@@ -1,9 +1,13 @@
 package com.example.data.repository
 
+import com.example.data.local.BillDao
 import com.example.data.local.CalendarDao
 import com.example.data.local.HabitDao
 import com.example.data.local.NoteDao
 import com.example.data.local.SyncQueueDao
+import com.example.data.model.Bill
+import com.example.data.model.BillPayment
+import com.example.data.model.BillRepeatType
 import com.example.data.model.CalendarEvent
 import com.example.data.model.Category
 import com.example.data.model.GoogleCalendar
@@ -32,6 +36,7 @@ class BlocoRepository(
   private val habitDao: HabitDao,
   private val calendarDao: CalendarDao,
   private val syncQueueDao: SyncQueueDao,
+  private val billDao: BillDao,
   private val calendarSyncHelper: CalendarSyncHelper? = null
 ) {
 
@@ -39,6 +44,10 @@ class BlocoRepository(
   val activeNotes: Flow<List<Note>> = noteDao.getActiveNotes()
   val archivedNotes: Flow<List<Note>> = noteDao.getArchivedNotes()
   val allNoteItems: Flow<List<NoteItem>> = noteDao.getAllNoteItems()
+
+  val activeBills: Flow<List<Bill>> = billDao.getAllActiveBills()
+  val allBills: Flow<List<Bill>> = billDao.getAllBills()
+  val allBillPayments: Flow<List<BillPayment>> = billDao.getAllPayments()
 
   val notesWithItems: Flow<List<NoteWithItems>> = combine(
     activeNotes,
@@ -216,6 +225,36 @@ class BlocoRepository(
     calendarDao.insertCalendars(updated)
   }
 
+  suspend fun insertBill(bill: Bill) {
+    billDao.insertBill(bill)
+  }
+
+  suspend fun updateBill(bill: Bill) {
+    billDao.updateBill(bill)
+  }
+
+  suspend fun deleteBill(id: String) {
+    billDao.deletePaymentsForBill(id)
+    billDao.deleteBillById(id)
+  }
+
+  suspend fun markBillPaid(billId: String, cycleKey: String, dueDateEpoch: Long, amount: Double, notes: String = "") {
+    val payment = BillPayment(
+      billId = billId,
+      cycleKey = cycleKey,
+      dueDateEpochDay = dueDateEpoch,
+      paidDateEpochDay = LocalDate.now().toEpochDay(),
+      paidAmount = amount,
+      isPaid = true,
+      notes = notes
+    )
+    billDao.insertPayment(payment)
+  }
+
+  suspend fun unmarkBillPaid(billId: String, cycleKey: String) {
+    billDao.deletePayment(billId, cycleKey)
+  }
+
   suspend fun clearSyncQueue() {
     syncQueueDao.clearQueue()
   }
@@ -228,6 +267,8 @@ class BlocoRepository(
     calendarDao.clearAllEvents()
     calendarDao.clearAllCalendars()
     syncQueueDao.clearQueue()
+    billDao.deleteAllBills()
+    billDao.deleteAllPayments()
   }
 
   suspend fun syncWithDeviceCalendar(userEmail: String? = null): Int {
@@ -462,6 +503,48 @@ class BlocoRepository(
     }
     root.put("calendars", calsArr)
 
+    // Bills (Contas a Pagar)
+    val billsList = activeBills.first()
+    val billsArr = org.json.JSONArray()
+    billsList.forEach { b ->
+      val obj = org.json.JSONObject()
+      obj.put("id", b.id)
+      obj.put("title", b.title)
+      obj.put("amount", b.amount)
+      obj.put("isVariableAmount", b.isVariableAmount)
+      obj.put("category", b.category)
+      obj.put("repeatType", b.repeatType.name)
+      obj.put("dueDayOfMonth", b.dueDayOfMonth)
+      obj.put("dueDayOfWeek", b.dueDayOfWeek)
+      obj.put("startDateEpochDay", b.startDateEpochDay)
+      obj.put("customIntervalDays", b.customIntervalDays)
+      obj.put("reminderDaysBefore", b.reminderDaysBefore)
+      obj.put("reminderTime", b.reminderTime)
+      obj.put("notes", b.notes)
+      obj.put("barcode", b.barcode)
+      obj.put("isArchived", b.isArchived)
+      obj.put("createdAt", b.createdAt)
+      billsArr.put(obj)
+    }
+    root.put("bills", billsArr)
+
+    // Bill Payments
+    val paymentsList = allBillPayments.first()
+    val paymentsArr = org.json.JSONArray()
+    paymentsList.forEach { p ->
+      val obj = org.json.JSONObject()
+      obj.put("id", p.id)
+      obj.put("billId", p.billId)
+      obj.put("cycleKey", p.cycleKey)
+      obj.put("dueDateEpochDay", p.dueDateEpochDay)
+      obj.put("paidDateEpochDay", p.paidDateEpochDay)
+      obj.put("paidAmount", p.paidAmount)
+      obj.put("isPaid", p.isPaid)
+      obj.put("notes", p.notes)
+      paymentsArr.put(obj)
+    }
+    root.put("billPayments", paymentsArr)
+
     return root.toString(2)
   }
 
@@ -507,6 +590,8 @@ class BlocoRepository(
     val markList = mutableListOf<HabitMark>()
     val calList = mutableListOf<GoogleCalendar>()
     val eventList = mutableListOf<CalendarEvent>()
+    val billList = mutableListOf<Bill>()
+    val paymentList = mutableListOf<BillPayment>()
 
     // Helper functions for safe type conversion
     fun safeLong(obj: org.json.JSONObject, key: String, defaultVal: Long): Long {
@@ -734,10 +819,91 @@ class BlocoRepository(
       }
     }
 
+    // Parse Bills
+    val billsArr = root.optJSONArray("bills") ?: root.optJSONArray("bill_list") ?: root.optJSONArray("contas")
+    if (billsArr != null) {
+      for (i in 0 until billsArr.length()) {
+        try {
+          val obj = billsArr.getJSONObject(i)
+          val id = obj.optString("id", "bill_$i").ifBlank { "bill_$i" }
+          val title = obj.optString("title", "Conta $i").ifBlank { "Conta $i" }
+          val amount = obj.optDouble("amount", 0.0)
+          val isVar = obj.optBoolean("isVariableAmount", false)
+          val category = obj.optString("category", "Geral").ifBlank { "Geral" }
+          val repStr = obj.optString("repeatType", BillRepeatType.MENSAL.name)
+          val repType = try { BillRepeatType.valueOf(repStr) } catch (e: Exception) { BillRepeatType.MENSAL }
+          val dueDayOfMonth = safeInt(obj, "dueDayOfMonth", 10)
+          val dueDayOfWeek = safeInt(obj, "dueDayOfWeek", 1)
+          val startDate = safeLong(obj, "startDateEpochDay", LocalDate.now().toEpochDay())
+          val customInterval = safeInt(obj, "customIntervalDays", 30)
+          val reminderDays = safeInt(obj, "reminderDaysBefore", 1)
+          val reminderTime = obj.optString("reminderTime", "09:00")
+          val notes = obj.optString("notes", "")
+          val barcode = obj.optString("barcode", "")
+          val isArchived = obj.optBoolean("isArchived", false)
+          val createdAt = safeLong(obj, "createdAt", System.currentTimeMillis())
+
+          billList.add(
+            Bill(
+              id = id,
+              title = title,
+              amount = amount,
+              isVariableAmount = isVar,
+              category = category,
+              repeatType = repType,
+              dueDayOfMonth = dueDayOfMonth,
+              dueDayOfWeek = dueDayOfWeek,
+              startDateEpochDay = startDate,
+              customIntervalDays = customInterval,
+              reminderDaysBefore = reminderDays,
+              reminderTime = reminderTime,
+              notes = notes,
+              barcode = barcode,
+              isArchived = isArchived,
+              createdAt = createdAt
+            )
+          )
+        } catch (_: Exception) {}
+      }
+    }
+
+    // Parse Bill Payments
+    val paymentsArr = root.optJSONArray("billPayments") ?: root.optJSONArray("bill_payments") ?: root.optJSONArray("pagamentos")
+    if (paymentsArr != null) {
+      for (i in 0 until paymentsArr.length()) {
+        try {
+          val obj = paymentsArr.getJSONObject(i)
+          val id = obj.optString("id", "payment_$i").ifBlank { "payment_$i" }
+          val billId = obj.optString("billId", "").ifBlank { obj.optString("bill_id", "") }
+          val cycleKey = obj.optString("cycleKey", "").ifBlank { obj.optString("cycle_key", "") }
+          val dueEpoch = safeLong(obj, "dueDateEpochDay", 0L)
+          val paidEpoch = safeLong(obj, "paidDateEpochDay", LocalDate.now().toEpochDay())
+          val paidAmount = obj.optDouble("paidAmount", 0.0)
+          val isPaid = obj.optBoolean("isPaid", true)
+          val notes = obj.optString("notes", "")
+
+          if (billId.isNotBlank() && cycleKey.isNotBlank()) {
+            paymentList.add(
+              BillPayment(
+                id = id,
+                billId = billId,
+                cycleKey = cycleKey,
+                dueDateEpochDay = dueEpoch,
+                paidDateEpochDay = paidEpoch,
+                paidAmount = paidAmount,
+                isPaid = isPaid,
+                notes = notes
+              )
+            )
+          }
+        } catch (_: Exception) {}
+      }
+    }
+
     // Ensure we actually found something to restore or default setup
-    val totalItems = catList.size + noteList.size + habitList.size + eventList.size
+    val totalItems = catList.size + noteList.size + habitList.size + eventList.size + billList.size
     if (totalItems == 0 && root.length() == 0) {
-      throw IllegalArgumentException("O backup fornecido não contém dados válidos de notas, hábitos ou agenda.")
+      throw IllegalArgumentException("O backup fornecido não contém dados válidos de notas, hábitos, agenda ou contas.")
     }
 
     // Step 2: Now that everything parsed cleanly, apply to database
@@ -750,8 +916,10 @@ class BlocoRepository(
     if (markList.isNotEmpty()) habitDao.insertMarks(markList)
     if (calList.isNotEmpty()) calendarDao.insertCalendars(calList)
     if (eventList.isNotEmpty()) calendarDao.insertEvents(eventList)
+    if (billList.isNotEmpty()) billDao.insertBills(billList)
+    if (paymentList.isNotEmpty()) billDao.insertPayments(paymentList)
 
-    return "Backup restaurado com sucesso! (${noteList.size} notas, ${habitList.size} hábitos, ${eventList.size} compromissos)"
+    return "Backup restaurado com sucesso! (${noteList.size} notas, ${habitList.size} hábitos, ${eventList.size} compromissos, ${billList.size} contas)"
   }
 
   // Initial categories setup and cleanup of mock data

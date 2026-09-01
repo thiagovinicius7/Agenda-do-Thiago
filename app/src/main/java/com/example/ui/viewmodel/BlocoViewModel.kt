@@ -3,6 +3,10 @@ package com.example.ui.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.model.Bill
+import com.example.data.model.BillPayment
+import com.example.data.model.BillRepeatType
+import com.example.data.model.BillWithStatus
 import com.example.data.model.CalendarEvent
 import com.example.data.model.Category
 import com.example.data.model.GoogleCalendar
@@ -15,7 +19,9 @@ import com.example.data.model.NoteWithItems
 import com.example.data.model.RepeatType
 import com.example.data.model.SyncQueueItem
 import com.example.data.repository.BlocoRepository
+import com.example.notification.BillNotificationScheduler
 import com.example.notification.HabitNotificationScheduler
+import com.example.util.BillCalculations
 import com.example.util.HabitCalculations
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +36,7 @@ import java.time.LocalDate
 enum class TopSection {
   HOJE,
   MURAL,
+  CONTAS,
   AGENDA,
   HABITOS
 }
@@ -42,6 +49,8 @@ enum class ActiveOverlay {
   HABIT_CONCLUDED,
   EVENT_CREATE,
   EVENT_DETAIL,
+  BILL_CREATE,
+  BILL_DETAIL,
   SEARCH,
   SETTINGS,
   ONBOARDING,
@@ -71,12 +80,14 @@ data class BlocoUiState(
   val selectedNoteId: String? = null,
   val selectedHabitId: String? = "h_corrida",
   val selectedEventId: String? = null,
+  val selectedBillId: String? = null,
   val selectedHojeDate: LocalDate = LocalDate.now(),
   val selectedCalendarDate: LocalDate = LocalDate.now(),
   val calendarViewMode: CalendarViewMode = CalendarViewMode.MES,
   val muralCategoryFilter: String = "todos",
+  val billsCategoryFilter: String = "todas",
   val searchQuery: String = "",
-  val searchFilter: String = "tudo", // tudo, notas, agenda, habitos
+  val searchFilter: String = "tudo", // tudo, notas, contas, agenda, habitos
   val countInDaysNotation: Boolean = true,
   val weekStartSunday: Boolean = true,
   val backgroundSyncEnabled: Boolean = true,
@@ -105,6 +116,25 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
 
   val syncQueue: StateFlow<List<SyncQueueItem>> = repository.syncQueue
     .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val activeBills: StateFlow<List<Bill>> = repository.activeBills
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val billPayments: StateFlow<List<BillPayment>> = repository.allBillPayments
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+  val billsWithStatus: StateFlow<List<BillWithStatus>> = combine(
+    repository.activeBills,
+    repository.allBillPayments
+  ) { bills, payments ->
+    val today = LocalDate.now()
+    bills.map { bill ->
+      BillCalculations.computeBillStatus(bill, payments, today, today)
+    }.sortedWith(
+      compareBy<BillWithStatus> { it.isPaidForCurrentCycle }
+        .thenBy { it.nextDueDate }
+    )
+  }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
   init {
     viewModelScope.launch {
@@ -142,6 +172,10 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     _uiState.value = _uiState.value.copy(muralCategoryFilter = category)
   }
 
+  fun setBillsCategoryFilter(category: String) {
+    _uiState.value = _uiState.value.copy(billsCategoryFilter = category)
+  }
+
   fun setSearchQuery(query: String) {
     _uiState.value = _uiState.value.copy(searchQuery = query)
   }
@@ -174,8 +208,101 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     _uiState.value = _uiState.value.copy(selectedHabitId = null, activeOverlay = ActiveOverlay.HABIT_CREATE)
   }
 
+  fun openBill(billId: String) {
+    _uiState.value = _uiState.value.copy(selectedBillId = billId, activeOverlay = ActiveOverlay.BILL_DETAIL)
+  }
+
+  fun openBillCreate() {
+    _uiState.value = _uiState.value.copy(selectedBillId = null, activeOverlay = ActiveOverlay.BILL_CREATE)
+  }
+
   fun openEvent(eventId: String) {
     _uiState.value = _uiState.value.copy(selectedEventId = eventId, activeOverlay = ActiveOverlay.EVENT_DETAIL)
+  }
+
+  fun deleteBill(billId: String, context: Context) {
+    viewModelScope.launch {
+      repository.deleteBill(billId)
+      BillNotificationScheduler.cancelBillReminder(context, billId)
+      if (_uiState.value.selectedBillId == billId) {
+        closeOverlay()
+      }
+    }
+  }
+
+  fun toggleBillPayment(billWithStatus: BillWithStatus) {
+    viewModelScope.launch {
+      if (billWithStatus.isPaidForCurrentCycle) {
+        repository.unmarkBillPaid(billWithStatus.bill.id, billWithStatus.cycleKey)
+      } else {
+        repository.markBillPaid(
+          billId = billWithStatus.bill.id,
+          cycleKey = billWithStatus.cycleKey,
+          dueDateEpoch = billWithStatus.nextDueDate.toEpochDay(),
+          amount = billWithStatus.bill.amount
+        )
+      }
+    }
+  }
+
+  fun saveBill(
+    id: String?,
+    title: String,
+    amount: Double,
+    isVariableAmount: Boolean,
+    category: String,
+    repeatType: BillRepeatType,
+    dueDayOfMonth: Int,
+    dueDayOfWeek: Int,
+    startDateEpochDay: Long,
+    customIntervalDays: Int,
+    reminderDaysBefore: Int,
+    reminderTime: String,
+    notes: String,
+    barcode: String,
+    context: Context
+  ) {
+    viewModelScope.launch {
+      val isExisting = !id.isNullOrBlank()
+      val billId = id ?: "bill_${System.currentTimeMillis()}"
+      val bill = Bill(
+        id = billId,
+        title = title.ifBlank { "Conta fixa" },
+        amount = amount,
+        isVariableAmount = isVariableAmount,
+        category = category.ifBlank { "Geral" },
+        repeatType = repeatType,
+        dueDayOfMonth = dueDayOfMonth,
+        dueDayOfWeek = dueDayOfWeek,
+        startDateEpochDay = startDateEpochDay,
+        customIntervalDays = customIntervalDays,
+        reminderDaysBefore = reminderDaysBefore,
+        reminderTime = reminderTime,
+        notes = notes,
+        barcode = barcode,
+        isArchived = false,
+        createdAt = System.currentTimeMillis()
+      )
+
+      if (isExisting) {
+        repository.updateBill(bill)
+      } else {
+        repository.insertBill(bill)
+      }
+
+      // Schedule or cancel notification
+      if (reminderTime.isNotBlank() && reminderTime != "Desativado") {
+        BillNotificationScheduler.scheduleBillReminder(context, bill)
+      } else {
+        BillNotificationScheduler.cancelBillReminder(context, bill.id)
+      }
+
+      closeOverlay()
+    }
+  }
+
+  fun testBillNotification(context: Context, billTitle: String, amount: String) {
+    BillNotificationScheduler.sendTestNotificationNow(context, billTitle, amount)
   }
 
   fun deleteEvent(eventId: String) {

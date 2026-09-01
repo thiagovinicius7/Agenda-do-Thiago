@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,16 +27,19 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.BillWithStatus
 import com.example.data.model.CalendarEvent
 import com.example.data.model.GoogleCalendar
 import com.example.data.model.GridCellState
 import com.example.data.model.HabitCalculationResult
 import com.example.data.model.NoteWithItems
 import com.example.ui.components.ModernistCheckbox
+import com.example.ui.components.Ruler1dp
 import com.example.ui.components.Ruler2dp
 import com.example.ui.theme.ArchivoFont
 import com.example.ui.theme.LocalBlocoColors
 import com.example.ui.theme.SectionLabelStyle
+import com.example.util.BillCalculations
 import com.example.util.HabitCalculations
 import java.time.Instant
 import java.time.LocalDate
@@ -49,6 +53,7 @@ fun HojeScreen(
   notes: List<NoteWithItems>,
   events: List<CalendarEvent> = emptyList(),
   calendars: List<GoogleCalendar> = emptyList(),
+  bills: List<BillWithStatus> = emptyList(),
   selectedDate: LocalDate = LocalDate.now(),
   onSelectDate: (LocalDate) -> Unit = {},
   onToggleHabit: (String) -> Unit,
@@ -56,9 +61,12 @@ fun HojeScreen(
   onOpenHabit: (String) -> Unit,
   onOpenNote: (String) -> Unit,
   onOpenEvent: (String) -> Unit = {},
+  onOpenBill: (String) -> Unit = {},
+  onToggleBillPayment: (BillWithStatus) -> Unit = {},
   onCreateEvent: () -> Unit = {},
   onCreateHabit: () -> Unit = {},
   onCreateNote: () -> Unit = {},
+  onCreateBill: () -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val colors = LocalBlocoColors.current
@@ -445,7 +453,141 @@ fun HojeScreen(
 
     Ruler2dp()
 
-    // 3. Post-its do dia
+    // 3. Contas a Pagar do Dia / Próximas
+    val dayBills = remember(bills, selectedDate) {
+      if (selectedDate == today) {
+        // Show today's, overdue, and upcoming within 3 days
+        bills.filter { !it.isPaidForCurrentCycle || it.nextDueDate == selectedDate }
+      } else {
+        bills.filter { it.nextDueDate == selectedDate }
+      }
+    }
+
+    Column(
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(top = 14.dp, bottom = 14.dp)
+    ) {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Text(
+            text = "CONTAS A PAGAR",
+            style = SectionLabelStyle,
+            color = colors.textTertiary
+          )
+          if (dayBills.any { !it.isPaidForCurrentCycle && it.daysUntilDue <= 0 }) {
+            Box(
+              modifier = Modifier
+                .background(colors.accent)
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+              Text(
+                text = "ATENÇÃO",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 9.sp,
+                color = Color.White
+              )
+            }
+          }
+        }
+
+        Text(
+          text = "+ Nova conta",
+          fontFamily = ArchivoFont,
+          fontWeight = FontWeight.Bold,
+          fontSize = 11.sp,
+          color = colors.accentDark,
+          modifier = Modifier.clickable(onClick = onCreateBill)
+        )
+      }
+
+      Spacer(modifier = Modifier.height(10.dp))
+
+      if (dayBills.isEmpty()) {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCreateBill() }
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+          Text(
+            text = "+ Nenhuma conta pendente para este período.",
+            fontFamily = ArchivoFont,
+            fontSize = 12.sp,
+            color = colors.textTertiary
+          )
+        }
+      } else {
+        Column(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+          verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          dayBills.take(4).forEach { billStatus ->
+            val bill = billStatus.bill
+            val isPaid = billStatus.isPaidForCurrentCycle
+            val daysUntil = billStatus.daysUntilDue
+
+            Row(
+              modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, if (isPaid) colors.rulerWeak else colors.text, RectangleShape)
+                .background(if (isPaid) colors.surface.copy(alpha = 0.5f) else colors.surface)
+                .clickable { onOpenBill(bill.id) }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              ModernistCheckbox(
+                checked = isPaid,
+                onCheckedChange = { onToggleBillPayment(billStatus) },
+                size = 18.dp
+              )
+
+              Spacer(modifier = Modifier.width(10.dp))
+
+              Column(modifier = Modifier.weight(1f)) {
+                Text(
+                  text = bill.title,
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 13.sp,
+                  color = if (isPaid) colors.textSecondary else colors.text
+                )
+                Text(
+                  text = if (isPaid) "Pago" else if (daysUntil == 0L) "Vence hoje" else if (daysUntil < 0) "Venceu há ${-daysUntil}d" else "Vence em ${daysUntil}d",
+                  fontFamily = ArchivoFont,
+                  fontSize = 11.sp,
+                  color = if (isPaid) colors.textTertiary else if (daysUntil <= 0) colors.accent else colors.textSecondary
+                )
+              }
+
+              Text(
+                text = if (bill.isVariableAmount) "Variável" else BillCalculations.formatCurrency(bill.amount),
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = if (isPaid) colors.textSecondary else colors.text
+              )
+            }
+          }
+        }
+      }
+    }
+
+    Ruler2dp()
+
+    // 4. Post-its do dia
     Column(
       modifier = Modifier
         .fillMaxWidth()
