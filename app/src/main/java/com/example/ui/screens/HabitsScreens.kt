@@ -140,12 +140,7 @@ fun HabitsListScreen(
               color = if (isPaused) colors.textSecondary else colors.text
             )
             Spacer(modifier = Modifier.height(5.dp))
-            val ruleText = when (habit.repeatType) {
-              RepeatType.DAYS_OF_WEEK -> "${if (habit.durationDays > 0) "${habit.durationDays} dias · " else ""}todos menos domingo"
-              RepeatType.TIMES_PER_WEEK -> "${habit.timesPerWeek}× por semana"
-              RepeatType.DAILY -> "Diário · sem fim"
-              else -> "Ativo"
-            }
+            val ruleText = HabitCalculations.formatHabitRuleDescription(habit)
             Text(
               text = if (isPaused) "PAUSADO · SEQUÊNCIA GUARDADA (${habit.pausedSavedStreak})" else ruleText.uppercase(),
               style = SectionLabelStyle,
@@ -346,11 +341,7 @@ fun HabitDetailScreen(
           color = colors.text
         )
         Spacer(modifier = Modifier.height(8.dp))
-        val subtitle = if (habit.durationDays > 0) {
-          "TODOS OS DIAS MENOS DOMINGO · ${habit.durationDays} DIAS"
-        } else {
-          "DIÁRIO · SEM FIM"
-        }
+        val subtitle = HabitCalculations.formatHabitRuleDescription(habit)
         Text(
           text = subtitle,
           style = SectionLabelStyle,
@@ -886,7 +877,22 @@ fun HabitDetailScreen(
 fun HabitCreateScreen(
   initialHabit: Habit? = null,
   onBack: () -> Unit,
-  onSaveHabit: (name: String, repeatType: RepeatType, repeatDays: String, durationDays: Int, reminder: String, showInCalendar: Boolean, startDateEpochDay: Long, markPastDays: Boolean) -> Unit,
+  onSaveHabit: (
+    name: String,
+    repeatType: RepeatType,
+    repeatDays: String,
+    timesPerWeek: Int,
+    everyNDays: Int,
+    weeklyDayOfWeek: Int,
+    monthlyDayOfMonth: Int,
+    monthDayStart: Int,
+    monthDayEnd: Int,
+    durationDays: Int,
+    reminder: String,
+    showInCalendar: Boolean,
+    startDateEpochDay: Long,
+    markPastDays: Boolean
+  ) -> Unit,
   onTestNotification: (String) -> Unit = {},
   modifier: Modifier = Modifier
 ) {
@@ -902,6 +908,13 @@ fun HabitCreateScreen(
         ?: setOf(1, 2, 3, 4, 5, 6)
     )
   }
+  var timesPerWeek by remember(initialHabit) { mutableIntStateOf(initialHabit?.timesPerWeek ?: 3) }
+  var everyNDays by remember(initialHabit) { mutableIntStateOf(initialHabit?.everyNDays ?: 2) }
+  var weeklyDayOfWeek by remember(initialHabit) { mutableIntStateOf(initialHabit?.weeklyDayOfWeek ?: 1) }
+  var monthlyDayOfMonth by remember(initialHabit) { mutableIntStateOf(initialHabit?.monthlyDayOfMonth ?: 1) }
+  var monthDayStart by remember(initialHabit) { mutableIntStateOf(initialHabit?.monthDayStart ?: 9) }
+  var monthDayEnd by remember(initialHabit) { mutableIntStateOf(initialHabit?.monthDayEnd ?: 17) }
+
   var durationDays by remember(initialHabit) { mutableIntStateOf(initialHabit?.durationDays ?: 150) }
   val today = remember { LocalDate.now() }
   var startDate by remember(initialHabit) {
@@ -935,10 +948,16 @@ fun HabitCreateScreen(
     name = name,
     repeatType = repeatType,
     repeatDays = selectedDays.joinToString(","),
+    timesPerWeek = timesPerWeek,
+    everyNDays = everyNDays,
+    weeklyDayOfWeek = weeklyDayOfWeek,
+    monthlyDayOfMonth = monthlyDayOfMonth,
+    monthDayStart = monthDayStart,
+    monthDayEnd = monthDayEnd,
     durationDays = durationDays,
     startDateEpochDay = startDate.toEpochDay()
   )
-  val previewCalc = remember(name, repeatType, selectedDays, durationDays, startDate) {
+  val previewCalc = remember(name, repeatType, selectedDays, timesPerWeek, everyNDays, weeklyDayOfWeek, monthlyDayOfMonth, monthDayStart, monthDayEnd, durationDays, startDate) {
     HabitCalculations.calculate(dummyHabit, emptyList(), currentEpochDay = today.toEpochDay())
   }
 
@@ -1130,34 +1149,411 @@ fun HabitCreateScreen(
         }
         Spacer(modifier = Modifier.height(2.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+          RepetitionGridItem("Novena / Dias do mês", isSelected = repeatType == RepeatType.MONTH_DAYS_RANGE, modifier = Modifier.weight(1f)) { repeatType = RepeatType.MONTH_DAYS_RANGE }
+          RepetitionGridItem("Dia fixo no mês", isSelected = repeatType == RepeatType.MONTHLY, modifier = Modifier.weight(1f)) { repeatType = RepeatType.MONTHLY }
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
           RepetitionGridItem("Semanal", isSelected = repeatType == RepeatType.WEEKLY, modifier = Modifier.weight(1f)) { repeatType = RepeatType.WEEKLY }
-          RepetitionGridItem("Mensal", isSelected = repeatType == RepeatType.MONTHLY, modifier = Modifier.weight(1f)) { repeatType = RepeatType.MONTHLY }
         }
       }
 
-      // S T Q Q S S D Days Selector
-      if (repeatType == RepeatType.DAYS_OF_WEEK) {
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(
-          modifier = Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-          DayLetterChip("S", 1, selectedDays) { toggleDay(1, selectedDays) { selectedDays = it } }
-          DayLetterChip("T", 2, selectedDays) { toggleDay(2, selectedDays) { selectedDays = it } }
-          DayLetterChip("Q", 3, selectedDays) { toggleDay(3, selectedDays) { selectedDays = it } }
-          DayLetterChip("Q", 4, selectedDays) { toggleDay(4, selectedDays) { selectedDays = it } }
-          DayLetterChip("S", 5, selectedDays) { toggleDay(5, selectedDays) { selectedDays = it } }
-          DayLetterChip("S", 6, selectedDays) { toggleDay(6, selectedDays) { selectedDays = it } }
-          DayLetterChip("D", 7, selectedDays) { toggleDay(7, selectedDays) { selectedDays = it } }
+      // Repetition type specific UI controls
+      when (repeatType) {
+        RepeatType.DAYS_OF_WEEK -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            DayLetterChip("S", 1, selectedDays) { toggleDay(1, selectedDays) { selectedDays = it } }
+            DayLetterChip("T", 2, selectedDays) { toggleDay(2, selectedDays) { selectedDays = it } }
+            DayLetterChip("Q", 3, selectedDays) { toggleDay(3, selectedDays) { selectedDays = it } }
+            DayLetterChip("Q", 4, selectedDays) { toggleDay(4, selectedDays) { selectedDays = it } }
+            DayLetterChip("S", 5, selectedDays) { toggleDay(5, selectedDays) { selectedDays = it } }
+            DayLetterChip("S", 6, selectedDays) { toggleDay(6, selectedDays) { selectedDays = it } }
+            DayLetterChip("D", 7, selectedDays) { toggleDay(7, selectedDays) { selectedDays = it } }
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            DurationChip("Seg a Sáb (sem Dom)", isSelected = selectedDays == setOf(1, 2, 3, 4, 5, 6)) { selectedDays = setOf(1, 2, 3, 4, 5, 6) }
+            DurationChip("Todos os dias", isSelected = selectedDays == setOf(1, 2, 3, 4, 5, 6, 7)) { selectedDays = setOf(1, 2, 3, 4, 5, 6, 7) }
+            DurationChip("Seg a Sex (dias úteis)", isSelected = selectedDays == setOf(1, 2, 3, 4, 5)) { selectedDays = setOf(1, 2, 3, 4, 5) }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = if (selectedDays.contains(7)) "Todos os dias da semana selecionados." else "Dias selecionados ativos. Dias não selecionados não quebram sequência.",
+            fontFamily = ArchivoFont,
+            fontWeight = FontWeight.Normal,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-          text = if (selectedDays.contains(7)) "Todos os dias da semana." else "Todos os dias menos domingo. Domingos não contam como falha.",
-          fontFamily = ArchivoFont,
-          fontWeight = FontWeight.Normal,
-          fontSize = 11.sp,
-          color = colors.textSecondary
-        )
+
+        RepeatType.TIMES_PER_WEEK -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(text = "QUANTAS VEZES POR SEMANA?", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            (1..7).forEach { n ->
+              DurationChip("${n}× / semana", isSelected = timesPerWeek == n) { timesPerWeek = n }
+            }
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (timesPerWeek > 1) timesPerWeek-- }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "− 1 vez", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+            Text(
+              text = "$timesPerWeek× POR SEMANA",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 14.sp,
+              color = colors.text
+            )
+            Row(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (timesPerWeek < 7) timesPerWeek++ }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "+ 1 vez", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "Meta flexível de $timesPerWeek vezes a cada semana (de segunda a domingo).",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+
+        RepeatType.EVERY_N_DAYS -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(text = "INTERVALO DE DIAS (A CADA N DIAS)", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            DurationChip("2 dias (dia sim/não)", isSelected = everyNDays == 2) { everyNDays = 2 }
+            DurationChip("3 dias", isSelected = everyNDays == 3) { everyNDays = 3 }
+            DurationChip("4 dias", isSelected = everyNDays == 4) { everyNDays = 4 }
+            DurationChip("5 dias", isSelected = everyNDays == 5) { everyNDays = 5 }
+            DurationChip("7 dias (semanal)", isSelected = everyNDays == 7) { everyNDays = 7 }
+            DurationChip("10 dias", isSelected = everyNDays == 10) { everyNDays = 10 }
+            DurationChip("14 dias (quinzena)", isSelected = everyNDays == 14) { everyNDays = 14 }
+            DurationChip("30 dias (mensal)", isSelected = everyNDays == 30) { everyNDays = 30 }
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Row(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (everyNDays > 1) everyNDays-- }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "← -1 dia", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              Text(
+                text = "A CADA $everyNDays DIAS",
+                fontFamily = ArchivoFont,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 14.sp,
+                color = colors.text
+              )
+              if (everyNDays == 2) {
+                Text(
+                  text = "Dia sim / Dia não",
+                  fontFamily = ArchivoFont,
+                  fontSize = 10.sp,
+                  color = colors.accentDark
+                )
+              }
+            }
+            Row(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (everyNDays < 365) everyNDays++ }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "+1 dia →", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "O hábito se repete a cada $everyNDays dias a contar da data de início selecionada (${startDate.format(shortFmt)}).",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+
+        RepeatType.MONTH_DAYS_RANGE -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(text = "INTERVALO DE DIAS DO MÊS (EX: NOVENA)", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            DurationChip("Novena (9 a 17)", isSelected = monthDayStart == 9 && monthDayEnd == 17) {
+              monthDayStart = 9
+              monthDayEnd = 17
+            }
+            DurationChip("Início do mês (1 a 5)", isSelected = monthDayStart == 1 && monthDayEnd == 5) {
+              monthDayStart = 1
+              monthDayEnd = 5
+            }
+            DurationChip("Primeira quinzena (1 a 15)", isSelected = monthDayStart == 1 && monthDayEnd == 15) {
+              monthDayStart = 1
+              monthDayEnd = 15
+            }
+            DurationChip("Meio do mês (10 a 20)", isSelected = monthDayStart == 10 && monthDayEnd == 20) {
+              monthDayStart = 10
+              monthDayEnd = 20
+            }
+            DurationChip("Final do mês (20 a 30)", isSelected = monthDayStart == 20 && monthDayEnd == 30) {
+              monthDayStart = 20
+              monthDayEnd = 30
+            }
+          }
+          Spacer(modifier = Modifier.height(10.dp))
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            // Dia Inicial
+            Column(
+              modifier = Modifier
+                .weight(1f)
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .padding(8.dp)
+            ) {
+              Text(text = "DIA INICIAL", style = SectionLabelStyle, color = colors.textTertiary)
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .border(1.dp, colors.rulerStrong, RectangleShape)
+                    .clickable { if (monthDayStart > 1) monthDayStart-- }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  Text(text = "◀", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+                }
+                Text(
+                  text = "Dia $monthDayStart",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.ExtraBold,
+                  fontSize = 14.sp,
+                  color = colors.text
+                )
+                Box(
+                  modifier = Modifier
+                    .border(1.dp, colors.rulerStrong, RectangleShape)
+                    .clickable { if (monthDayStart < 31) monthDayStart++ }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  Text(text = "▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+                }
+              }
+            }
+
+            // Dia Final
+            Column(
+              modifier = Modifier
+                .weight(1f)
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .padding(8.dp)
+            ) {
+              Text(text = "DIA FINAL", style = SectionLabelStyle, color = colors.textTertiary)
+              Spacer(modifier = Modifier.height(6.dp))
+              Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+              ) {
+                Box(
+                  modifier = Modifier
+                    .border(1.dp, colors.rulerStrong, RectangleShape)
+                    .clickable { if (monthDayEnd > 1) monthDayEnd-- }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  Text(text = "◀", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+                }
+                Text(
+                  text = "Dia $monthDayEnd",
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.ExtraBold,
+                  fontSize = 14.sp,
+                  color = colors.text
+                )
+                Box(
+                  modifier = Modifier
+                    .border(1.dp, colors.rulerStrong, RectangleShape)
+                    .clickable { if (monthDayEnd < 31) monthDayEnd++ }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                  Text(text = "▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+                }
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          val daysInPeriod = if (monthDayStart <= monthDayEnd) monthDayEnd - monthDayStart + 1 else (31 - monthDayStart + 1 + monthDayEnd)
+          Text(
+            text = "Ativo todo mês do dia $monthDayStart ao dia $monthDayEnd ($daysInPeriod dias a cada mês, ex: Novena mensal).",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.accentDark
+          )
+        }
+
+        RepeatType.MONTHLY -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(text = "DIA DO MÊS", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            listOf(1, 5, 10, 15, 20, 25, 28, 30).forEach { d ->
+              DurationChip("Dia $d", isSelected = monthlyDayOfMonth == d) { monthlyDayOfMonth = d }
+            }
+          }
+          Spacer(modifier = Modifier.height(8.dp))
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, colors.rulerStrong, RectangleShape)
+              .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Box(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (monthlyDayOfMonth > 1) monthlyDayOfMonth-- }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "◀ Dia anterior", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+            Text(
+              text = "TODO DIA $monthlyDayOfMonth",
+              fontFamily = ArchivoFont,
+              fontWeight = FontWeight.ExtraBold,
+              fontSize = 14.sp,
+              color = colors.text
+            )
+            Box(
+              modifier = Modifier
+                .border(1.dp, colors.rulerStrong, RectangleShape)
+                .clickable { if (monthlyDayOfMonth < 31) monthlyDayOfMonth++ }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+              Text(text = "Próximo dia ▶", fontFamily = ArchivoFont, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = colors.text)
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "O hábito se repete todo dia $monthlyDayOfMonth de cada mês.",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+
+        RepeatType.WEEKLY -> {
+          Spacer(modifier = Modifier.height(12.dp))
+          Text(text = "DIA DA SEMANA", style = SectionLabelStyle, color = colors.textTertiary)
+          Spacer(modifier = Modifier.height(6.dp))
+          val weekDays = listOf("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
+          val fullNames = listOf("Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo")
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+          ) {
+            weekDays.forEachIndexed { idx, dName ->
+              val dVal = idx + 1
+              val isSel = (weeklyDayOfWeek == dVal)
+              Box(
+                modifier = Modifier
+                  .weight(1f)
+                  .background(if (isSel) colors.text else Color.Transparent)
+                  .border(1.dp, if (isSel) colors.text else colors.rulerStrong, RectangleShape)
+                  .clickable { weeklyDayOfWeek = dVal }
+                  .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+              ) {
+                Text(
+                  text = dName,
+                  fontFamily = ArchivoFont,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 11.sp,
+                  color = if (isSel) colors.canvas else colors.text
+                )
+              }
+            }
+          }
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "O hábito se repete toda ${fullNames.getOrElse(weeklyDayOfWeek - 1) { "semana" }}.",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
+
+        RepeatType.DAILY -> {
+          Spacer(modifier = Modifier.height(6.dp))
+          Text(
+            text = "O hábito é diário e deve ser cumprido todos os dias.",
+            fontFamily = ArchivoFont,
+            fontSize = 11.sp,
+            color = colors.textSecondary
+          )
+        }
       }
 
       Spacer(modifier = Modifier.height(22.dp))
@@ -1348,6 +1744,12 @@ fun HabitCreateScreen(
             name,
             repeatType,
             selectedDays.joinToString(","),
+            timesPerWeek,
+            everyNDays,
+            weeklyDayOfWeek,
+            monthlyDayOfMonth,
+            monthDayStart,
+            monthDayEnd,
             durationDays,
             finalReminder,
             showInCalendar,

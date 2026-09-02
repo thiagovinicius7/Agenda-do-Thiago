@@ -50,6 +50,14 @@ object HabitCalculations {
       RepeatType.MONTHLY -> {
         date.dayOfMonth == habit.monthlyDayOfMonth
       }
+      RepeatType.MONTH_DAYS_RANGE -> {
+        val dom = date.dayOfMonth
+        if (habit.monthDayStart <= habit.monthDayEnd) {
+          dom in habit.monthDayStart..habit.monthDayEnd
+        } else {
+          dom >= habit.monthDayStart || dom <= habit.monthDayEnd
+        }
+      }
     }
   }
 
@@ -263,5 +271,39 @@ object HabitCalculations {
    */
   fun formatStreakInterval(startDay: Int, endDay: Int): String {
     return "d$startDay → d$endDay"
+  }
+
+  fun formatHabitRuleDescription(habit: Habit): String {
+    val durationPart = if (habit.durationDays > 0) "${habit.durationDays} DIAS · " else ""
+    return when (habit.repeatType) {
+      RepeatType.DAILY -> "${durationPart}DIÁRIO · SEM FIM"
+      RepeatType.DAYS_OF_WEEK -> {
+        val daysList = habit.repeatDays.split(",").mapNotNull { it.trim().toIntOrNull() }.toSet()
+        if (daysList == setOf(1, 2, 3, 4, 5, 6)) {
+          "${durationPart}TODOS OS DIAS MENOS DOMINGO"
+        } else if (daysList.size == 7) {
+          "${durationPart}TODOS OS DIAS DA SEMANA"
+        } else {
+          val names = mapOf(1 to "Seg", 2 to "Ter", 3 to "Qua", 4 to "Qui", 5 to "Sex", 6 to "Sáb", 7 to "Dom")
+          "${durationPart}" + daysList.sorted().mapNotNull { names[it] }.joinToString(", ").uppercase()
+        }
+      }
+      RepeatType.TIMES_PER_WEEK -> "${durationPart}${habit.timesPerWeek}× POR SEMANA"
+      RepeatType.EVERY_N_DAYS -> {
+        if (habit.everyNDays == 2) "${durationPart}A CADA 2 DIAS (DIA SIM / DIA NÃO)"
+        else "${durationPart}A CADA ${habit.everyNDays} DIAS"
+      }
+      RepeatType.WEEKLY -> {
+        val dayNames = listOf("Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo")
+        val name = dayNames.getOrElse(habit.weeklyDayOfWeek - 1) { "Semanal" }
+        "${durationPart}TODA ${name.uppercase()}"
+      }
+      RepeatType.MONTHLY -> "${durationPart}MENSAL · TODO DIA ${habit.monthlyDayOfMonth}"
+      RepeatType.MONTH_DAYS_RANGE -> {
+        val isNovena = habit.monthDayStart == 9 && habit.monthDayEnd == 17
+        val extra = if (isNovena) " (NOVENA)" else ""
+        "${durationPart}TODO MÊS · DIAS ${habit.monthDayStart} A ${habit.monthDayEnd}$extra"
+      }
+    }
   }
 }

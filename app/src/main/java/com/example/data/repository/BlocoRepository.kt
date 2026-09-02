@@ -448,6 +448,12 @@ class BlocoRepository(
       obj.put("name", h.name)
       obj.put("repeatType", h.repeatType.name)
       obj.put("repeatDays", h.repeatDays)
+      obj.put("timesPerWeek", h.timesPerWeek)
+      obj.put("everyNDays", h.everyNDays)
+      obj.put("weeklyDayOfWeek", h.weeklyDayOfWeek)
+      obj.put("monthlyDayOfMonth", h.monthlyDayOfMonth)
+      obj.put("monthDayStart", h.monthDayStart)
+      obj.put("monthDayEnd", h.monthDayEnd)
       obj.put("durationDays", h.durationDays)
       obj.put("startDateEpochDay", h.startDateEpochDay)
       obj.put("isArchived", h.isArchived)
@@ -704,6 +710,12 @@ class BlocoRepository(
           val repTypeStr = obj.optString("repeatType", RepeatType.DAILY.name)
           val repType = try { RepeatType.valueOf(repTypeStr) } catch (e: Exception) { RepeatType.DAILY }
           val repDays = obj.optString("repeatDays", "1,2,3,4,5,6").ifBlank { "1,2,3,4,5,6" }
+          val timesPerWeek = safeInt(obj, "timesPerWeek", 3)
+          val everyNDays = safeInt(obj, "everyNDays", 2)
+          val weeklyDayOfWeek = safeInt(obj, "weeklyDayOfWeek", 1)
+          val monthlyDayOfMonth = safeInt(obj, "monthlyDayOfMonth", 1)
+          val monthDayStart = safeInt(obj, "monthDayStart", 9)
+          val monthDayEnd = safeInt(obj, "monthDayEnd", 17)
           val durationDays = safeInt(obj, "durationDays", 0)
           val startEpoch = safeLong(obj, "startDateEpochDay", HabitCalculations.todayEpochDay())
           val isArchived = obj.optBoolean("isArchived", false)
@@ -718,6 +730,12 @@ class BlocoRepository(
               name = name,
               repeatType = repType,
               repeatDays = repDays,
+              timesPerWeek = timesPerWeek,
+              everyNDays = everyNDays,
+              weeklyDayOfWeek = weeklyDayOfWeek,
+              monthlyDayOfMonth = monthlyDayOfMonth,
+              monthDayStart = monthDayStart,
+              monthDayEnd = monthDayEnd,
               durationDays = durationDays,
               startDateEpochDay = startEpoch,
               isArchived = isArchived,

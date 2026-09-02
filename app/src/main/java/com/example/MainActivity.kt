@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +38,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -162,6 +166,36 @@ fun BlocoApp(
     }
   }
 
+  val sections = remember {
+    listOf(
+      TopSection.HOJE,
+      TopSection.MURAL,
+      TopSection.CONTAS,
+      TopSection.AGENDA,
+      TopSection.HABITOS
+    )
+  }
+  val coroutineScope = rememberCoroutineScope()
+  val pagerState = rememberPagerState(
+    initialPage = sections.indexOf(uiState.currentSection).coerceAtLeast(0)
+  ) { sections.size }
+
+  // Sync pager when top bar tab is clicked
+  LaunchedEffect(uiState.currentSection) {
+    val targetPage = sections.indexOf(uiState.currentSection)
+    if (targetPage in sections.indices && pagerState.currentPage != targetPage) {
+      pagerState.animateScrollToPage(targetPage)
+    }
+  }
+
+  // Sync ViewModel section when user swipes the pager
+  LaunchedEffect(pagerState.currentPage) {
+    val targetSection = sections[pagerState.currentPage]
+    if (uiState.currentSection != targetSection) {
+      viewModel.setSection(targetSection)
+    }
+  }
+
   // Handle system back button properly
   BackHandler(enabled = uiState.activeOverlay != ActiveOverlay.NONE || uiState.currentSection != TopSection.HOJE) {
     if (uiState.activeOverlay != ActiveOverlay.NONE) {
@@ -188,14 +222,25 @@ fun BlocoApp(
           // Top Navigation Bar (HOJE, MURAL, AGENDA, HÁBITOS, ⌕, ⚙)
           BlocoTopTabBar(
             currentSection = uiState.currentSection,
-            onSelectSection = { viewModel.setSection(it) },
+            onSelectSection = { targetSection ->
+              viewModel.setSection(targetSection)
+              val targetPage = sections.indexOf(targetSection)
+              if (targetPage in sections.indices && pagerState.currentPage != targetPage) {
+                coroutineScope.launch {
+                  pagerState.animateScrollToPage(targetPage)
+                }
+              }
+            },
             onOpenSearch = { viewModel.setOverlay(ActiveOverlay.SEARCH) },
             onOpenSettings = { viewModel.setOverlay(ActiveOverlay.SETTINGS) }
           )
 
-          // Content based on selected Top Section
-          Box(modifier = Modifier.weight(1f)) {
-            when (uiState.currentSection) {
+          // Content based on selected Top Section with swipe navigation
+          HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.weight(1f)
+          ) { page ->
+            when (sections[page]) {
               TopSection.HOJE -> {
                 HojeScreen(
                   habits = habits,
@@ -339,12 +384,18 @@ fun BlocoApp(
                   viewModel.closeOverlay()
                 }
               },
-              onSaveHabit = { name, repeatType, repeatDays, durationDays, reminder, showInCal, startEpochDay, markPast ->
+              onSaveHabit = { name, repeatType, repeatDays, timesPerWeek, everyNDays, weeklyDayOfWeek, monthlyDayOfMonth, monthDayStart, monthDayEnd, durationDays, reminder, showInCal, startEpochDay, markPast ->
                 viewModel.saveHabit(
                   id = editingHabit?.id,
                   name = name,
                   repeatType = repeatType,
                   repeatDays = repeatDays,
+                  timesPerWeek = timesPerWeek,
+                  everyNDays = everyNDays,
+                  weeklyDayOfWeek = weeklyDayOfWeek,
+                  monthlyDayOfMonth = monthlyDayOfMonth,
+                  monthDayStart = monthDayStart,
+                  monthDayEnd = monthDayEnd,
                   durationDays = durationDays,
                   reminderTime = reminder,
                   showInCalendar = showInCal,

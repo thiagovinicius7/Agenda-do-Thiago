@@ -9,7 +9,8 @@ enum class RepeatType {
   TIMES_PER_WEEK,
   EVERY_N_DAYS,
   WEEKLY,
-  MONTHLY
+  MONTHLY,
+  MONTH_DAYS_RANGE
 }
 
 enum class HabitMarkStatus {
@@ -23,12 +24,14 @@ data class Habit(
   @PrimaryKey val id: String,
   val name: String,
   val repeatType: RepeatType = RepeatType.DAILY,
-  // For DAYS_OF_WEEK: bitmask (1=Sun, 2=Mon, 4=Tue, 8=Wed, 16=Thu, 32=Fri, 64=Sat) or comma-separated days
-  val repeatDays: String = "1,2,3,4,5,6", // Mon-Sat by default (excluding Sunday=0 or 7 depending on convention)
+  // For DAYS_OF_WEEK: comma-separated days (1=Mon..7=Sun)
+  val repeatDays: String = "1,2,3,4,5,6", // Mon-Sat by default
   val timesPerWeek: Int = 3,
   val everyNDays: Int = 2,
-  val weeklyDayOfWeek: Int = 1, // 1=Mon
-  val monthlyDayOfMonth: Int = 1,
+  val weeklyDayOfWeek: Int = 1, // 1=Mon..7=Sun
+  val monthlyDayOfMonth: Int = 1, // 1..31
+  val monthDayStart: Int = 9, // ex: Novena (dia 9 ao 17 de cada mês)
+  val monthDayEnd: Int = 17,
   val durationDays: Int = 0, // 0 = sem fim, 40 = 40 dias, 150 = 150 dias
   val startDateEpochDay: Long = 0L, // LocalDate.toEpochDay()
   val showInCalendar: Boolean = true,
