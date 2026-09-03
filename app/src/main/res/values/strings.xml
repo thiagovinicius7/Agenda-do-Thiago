@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Bloco T</string>
+    <string name="widget_today_name">Bloco · Hoje</string>
+    <string name="widget_today_description">Compromissos, contas a pagar e hábitos de hoje com marcação rápida e inserção de notas no mural.</string>
 </resources>

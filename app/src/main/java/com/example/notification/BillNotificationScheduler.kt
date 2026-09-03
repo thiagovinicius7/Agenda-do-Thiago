@@ -1,14 +1,18 @@
 package com.example.notification
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.Toast
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.example.data.model.Bill
 import com.example.util.BillCalculations
 import java.time.LocalDate
-import java.time.ZoneId
 import java.util.Calendar
 
 object BillNotificationScheduler {
@@ -77,7 +81,21 @@ object BillNotificationScheduler {
     )
 
     try {
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (alarmManager.canScheduleExactAlarms()) {
+          alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+          )
+        } else {
+          alarmManager.setAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            calendar.timeInMillis,
+            pendingIntent
+          )
+        }
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         alarmManager.setExactAndAllowWhileIdle(
           AlarmManager.RTC_WAKEUP,
           calendar.timeInMillis,
@@ -106,6 +124,21 @@ object BillNotificationScheduler {
     billTitle: String,
     amount: String
   ) {
+    val areEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    val hasPostPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    } else {
+      true
+    }
+
+    if (!areEnabled || !hasPostPermission) {
+      Toast.makeText(
+        context,
+        "Permissão de notificação necessária. Ative nas configurações do aparelho.",
+        Toast.LENGTH_LONG
+      ).show()
+    }
+
     val intent = Intent(context, BillReminderReceiver::class.java).apply {
       putExtra(BillReminderReceiver.EXTRA_BILL_ID, "test_${System.currentTimeMillis()}")
       putExtra(BillReminderReceiver.EXTRA_BILL_TITLE, billTitle)
@@ -113,6 +146,7 @@ object BillNotificationScheduler {
       putExtra(BillReminderReceiver.EXTRA_DUE_INFO, "Vence hoje (Teste de notificação)")
     }
     context.sendBroadcast(intent)
+    Toast.makeText(context, "Notificação de teste enviada!", Toast.LENGTH_SHORT).show()
   }
 
   fun cancelBillReminder(context: Context, billId: String) {

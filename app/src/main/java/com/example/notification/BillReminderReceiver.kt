@@ -41,6 +41,8 @@ class BillReminderReceiver : BroadcastReceiver() {
         description = "Notificações de vencimento de contas fixas e variáveis"
         enableLights(true)
         enableVibration(true)
+        setShowBadge(true)
+        lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
       }
       notificationManager.createNotificationChannel(channel)
     }
@@ -65,7 +67,7 @@ class BillReminderReceiver : BroadcastReceiver() {
     }
 
     val notification = NotificationCompat.Builder(context, channelId)
-      .setSmallIcon(R.mipmap.ic_launcher)
+      .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle("Bloco · Vencimento: $billTitle")
       .setContentText(bodyText)
       .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
@@ -75,7 +77,11 @@ class BillReminderReceiver : BroadcastReceiver() {
       .setContentIntent(pendingIntent)
       .build()
 
-    notificationManager.notify(("bill_$billId").hashCode(), notification)
+    try {
+      notificationManager.notify(("bill_$billId").hashCode(), notification)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
   }
 
   companion object {

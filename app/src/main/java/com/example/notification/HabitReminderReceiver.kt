@@ -42,6 +42,8 @@ class HabitReminderReceiver : BroadcastReceiver() {
         description = "Notificações diárias para realização de hábitos e metas"
         enableLights(true)
         enableVibration(true)
+        setShowBadge(true)
+        lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
       }
       notificationManager.createNotificationChannel(channel)
     }
@@ -59,16 +61,21 @@ class HabitReminderReceiver : BroadcastReceiver() {
     )
 
     val notification = NotificationCompat.Builder(context, channelId)
-      .setSmallIcon(R.mipmap.ic_launcher)
+      .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle("Bloco · Hora de: $habitName")
       .setContentText("Mantenha sua constância ativa! Abra para registrar o dia de hoje.")
+      .setStyle(NotificationCompat.BigTextStyle().bigText("Mantenha sua constância ativa! Abra para registrar o hábito \"$habitName\" de hoje."))
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setDefaults(NotificationCompat.DEFAULT_ALL)
       .setAutoCancel(true)
       .setContentIntent(pendingIntent)
       .build()
 
-    notificationManager.notify(habitId.hashCode(), notification)
+    try {
+      notificationManager.notify(habitId.hashCode(), notification)
+    } catch (e: Exception) {
+      e.printStackTrace()
+    }
   }
 
   companion object {

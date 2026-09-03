@@ -26,6 +26,29 @@
         <receiver
             android:name=".notification.BillReminderReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".notification.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".widget.BlocoTodayWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_today_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.widget.ACTION_UPDATE_ALL" />
+                <action android:name="com.example.widget.ACTION_REFRESH" />
+                <action android:name="com.example.widget.ACTION_TOGGLE_HABIT" />
+                <action android:name="com.example.widget.ACTION_TOGGLE_BILL" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bloco_today_widget_info" />
+        </receiver>
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

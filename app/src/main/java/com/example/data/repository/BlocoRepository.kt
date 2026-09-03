@@ -30,6 +30,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import android.content.Context
+import com.example.widget.BlocoTodayWidgetProvider
 
 class BlocoRepository(
   private val noteDao: NoteDao,
@@ -37,8 +39,13 @@ class BlocoRepository(
   private val calendarDao: CalendarDao,
   private val syncQueueDao: SyncQueueDao,
   private val billDao: BillDao,
-  private val calendarSyncHelper: CalendarSyncHelper? = null
+  private val calendarSyncHelper: CalendarSyncHelper? = null,
+  private val appContext: Context? = null
 ) {
+
+  private fun notifyWidgetUpdate() {
+    appContext?.let { BlocoTodayWidgetProvider.updateAllWidgets(it) }
+  }
 
   val categories: Flow<List<Category>> = noteDao.getAllCategories()
   val activeNotes: Flow<List<Note>> = noteDao.getActiveNotes()
@@ -122,11 +129,20 @@ class BlocoRepository(
   suspend fun deleteNoteItem(itemId: String) = noteDao.deleteNoteItem(itemId)
 
   // Habit actions
-  suspend fun insertHabit(habit: Habit) = habitDao.insertHabit(habit)
-  suspend fun updateHabit(habit: Habit) = habitDao.updateHabit(habit)
+  suspend fun insertHabit(habit: Habit) {
+    habitDao.insertHabit(habit)
+    notifyWidgetUpdate()
+  }
+
+  suspend fun updateHabit(habit: Habit) {
+    habitDao.updateHabit(habit)
+    notifyWidgetUpdate()
+  }
+
   suspend fun deleteHabit(habitId: String) {
     habitDao.deleteHabit(habitId)
     habitDao.deleteMarksForHabit(habitId)
+    notifyWidgetUpdate()
   }
 
   suspend fun toggleHabitDay(habitId: String, dateEpochDay: Long = HabitCalculations.todayEpochDay()) {
@@ -137,6 +153,7 @@ class BlocoRepository(
     } else {
       habitDao.insertMark(HabitMark(habitId = habitId, dateEpochDay = dateEpochDay, status = HabitMarkStatus.DONE))
     }
+    notifyWidgetUpdate()
   }
 
   suspend fun markPastHabitDays(habitId: String, fromEpochDay: Long, toEpochDay: Long, markAsDone: Boolean = true) {
@@ -159,6 +176,7 @@ class BlocoRepository(
     if (newMarks.isNotEmpty()) {
       habitDao.insertMarks(newMarks)
     }
+    notifyWidgetUpdate()
   }
 
   // Calendar actions
@@ -227,15 +245,18 @@ class BlocoRepository(
 
   suspend fun insertBill(bill: Bill) {
     billDao.insertBill(bill)
+    notifyWidgetUpdate()
   }
 
   suspend fun updateBill(bill: Bill) {
     billDao.updateBill(bill)
+    notifyWidgetUpdate()
   }
 
   suspend fun deleteBill(id: String) {
     billDao.deletePaymentsForBill(id)
     billDao.deleteBillById(id)
+    notifyWidgetUpdate()
   }
 
   suspend fun markBillPaid(billId: String, cycleKey: String, dueDateEpoch: Long, amount: Double, notes: String = "") {
@@ -249,10 +270,12 @@ class BlocoRepository(
       notes = notes
     )
     billDao.insertPayment(payment)
+    notifyWidgetUpdate()
   }
 
   suspend fun unmarkBillPaid(billId: String, cycleKey: String) {
     billDao.deletePayment(billId, cycleKey)
+    notifyWidgetUpdate()
   }
 
   suspend fun clearSyncQueue() {

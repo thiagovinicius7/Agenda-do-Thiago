@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -89,6 +90,9 @@ import com.example.ui.viewmodel.CalendarViewMode
 import com.example.ui.viewmodel.TopSection
 
 class MainActivity : ComponentActivity() {
+
+  private var activeViewModel: BlocoViewModel? = null
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
@@ -101,13 +105,19 @@ class MainActivity : ComponentActivity() {
       calendarDao = database.calendarDao(),
       syncQueueDao = database.syncQueueDao(),
       billDao = database.billDao(),
-      calendarSyncHelper = syncHelper
+      calendarSyncHelper = syncHelper,
+      appContext = applicationContext
     )
     val viewModelFactory = BlocoViewModelFactory(repository)
 
     setContent {
       val viewModel: BlocoViewModel = viewModel(factory = viewModelFactory)
+      activeViewModel = viewModel
       val uiState by viewModel.uiState.collectAsState()
+
+      androidx.compose.runtime.LaunchedEffect(intent) {
+        handleIncomingIntent(intent, viewModel)
+      }
 
       BlocoTheme(darkTheme = uiState.isDarkTheme) {
         BlocoApp(
@@ -116,6 +126,50 @@ class MainActivity : ComponentActivity() {
           onToggleTheme = { viewModel.toggleDarkTheme() }
         )
       }
+    }
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    activeViewModel?.let { handleIncomingIntent(intent, it) }
+  }
+
+  private fun handleIncomingIntent(intent: Intent?, viewModel: BlocoViewModel) {
+    if (intent == null) return
+    val openAction = intent.getStringExtra("open_action")
+    if (openAction == "create_note") {
+      viewModel.setSection(TopSection.MURAL)
+      viewModel.openNote("")
+      intent.removeExtra("open_action")
+      return
+    }
+
+    val openHabitId = intent.getStringExtra("open_habit_id")
+    if (openHabitId != null) {
+      viewModel.openHabit(openHabitId)
+      intent.removeExtra("open_habit_id")
+      return
+    }
+
+    val openBillId = intent.getStringExtra("open_bill_id")
+    if (openBillId != null) {
+      viewModel.setSection(TopSection.CONTAS)
+      viewModel.openBill(openBillId)
+      intent.removeExtra("open_bill_id")
+      return
+    }
+
+    val openSection = intent.getStringExtra("open_section")
+    if (openSection != null) {
+      when (openSection) {
+        "HOJE" -> viewModel.setSection(TopSection.HOJE)
+        "MURAL" -> viewModel.setSection(TopSection.MURAL)
+        "CONTAS" -> viewModel.setSection(TopSection.CONTAS)
+        "AGENDA" -> viewModel.setSection(TopSection.AGENDA)
+        "HABITOS" -> viewModel.setSection(TopSection.HABITOS)
+      }
+      intent.removeExtra("open_section")
     }
   }
 }
@@ -144,6 +198,19 @@ fun BlocoApp(
     if (granted) {
       viewModel.syncDeviceCalendar("thiagovinicius7@gmail.com")
     }
+  }
+
+  fun ensureNotificationPermissionAndRun(action: () -> Unit) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      val isGranted = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.POST_NOTIFICATIONS
+      ) == PackageManager.PERMISSION_GRANTED
+      if (!isGranted) {
+        permissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+      }
+    }
+    action()
   }
 
   LaunchedEffect(Unit) {
@@ -365,7 +432,9 @@ fun BlocoApp(
                 }
               },
               onTestNotification = { habitName ->
-                viewModel.testNotification(context, habitName)
+                ensureNotificationPermissionAndRun {
+                  viewModel.testNotification(context, habitName)
+                }
               },
               onEditRule = { viewModel.setOverlay(ActiveOverlay.HABIT_CREATE) },
               onDeleteHabit = { habitId ->
@@ -405,7 +474,9 @@ fun BlocoApp(
                 )
               },
               onTestNotification = { habitName ->
-                viewModel.testNotification(context, habitName)
+                ensureNotificationPermissionAndRun {
+                  viewModel.testNotification(context, habitName)
+                }
               }
             )
           }
@@ -516,7 +587,9 @@ fun BlocoApp(
               onDelete = { /* no-op for create */ },
               onTogglePayment = { /* no-op for create */ },
               onTestNotification = { title, amt ->
-                viewModel.testBillNotification(context, title, amt)
+                ensureNotificationPermissionAndRun {
+                  viewModel.testBillNotification(context, title, amt)
+                }
               }
             )
           }
@@ -535,7 +608,9 @@ fun BlocoApp(
                 viewModel.toggleBillPayment(billStatus)
               },
               onTestNotification = { title, amt ->
-                viewModel.testBillNotification(context, title, amt)
+                ensureNotificationPermissionAndRun {
+                  viewModel.testBillNotification(context, title, amt)
+                }
               }
             )
           }
