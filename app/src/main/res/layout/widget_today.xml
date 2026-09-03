@@ -87,12 +87,13 @@
     </LinearLayout>
 
     <!-- Divider -->
-    <View
+    <ImageView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="8dp"
-        android:background="#DFDBD2" />
+        android:background="#DFDBD2"
+        android:contentDescription="@null" />
 
     <!-- Empty State -->
     <TextView
@@ -103,10 +104,10 @@
         android:gravity="center"
         android:letterSpacing="0.03"
         android:padding="8dp"
-        android:text="Tudo em dia para hoje! ✦\nToque para abrir o Bloco T."
+        android:text="Carregando... ✦"
         android:textColor="#8C8578"
         android:textSize="12sp"
-        android:visibility="gone" />
+        android:visibility="visible" />
 
     <!-- Container where items are populated -->
     <LinearLayout

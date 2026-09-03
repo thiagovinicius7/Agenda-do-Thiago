@@ -36,7 +36,7 @@ class BlocoTodayWidgetProvider : AppWidgetProvider() {
     // 1. Immediately provide an initial RemoteViews synchronously so launcher never fails or times out
     for (appWidgetId in appWidgetIds) {
       try {
-        val initialViews = RemoteViews(context.packageName, R.layout.widget_today_initial)
+        val initialViews = RemoteViews(context.packageName, R.layout.widget_today)
         val openHojeIntent = Intent(context, MainActivity::class.java).apply {
           flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
           putExtra("open_section", "HOJE")
@@ -47,7 +47,7 @@ class BlocoTodayWidgetProvider : AppWidgetProvider() {
           openHojeIntent,
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        initialViews.setOnClickPendingIntent(R.id.widget_initial_root, pendingOpenHoje)
+        initialViews.setOnClickPendingIntent(R.id.widget_root, pendingOpenHoje)
         appWidgetManager.updateAppWidget(appWidgetId, initialViews)
       } catch (e: Exception) {
         e.printStackTrace()
