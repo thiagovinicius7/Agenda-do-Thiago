@@ -25,7 +25,7 @@
                 android:id="@+id/widget_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-black"
+                android:fontFamily="sans-serif"
                 android:letterSpacing="0.08"
                 android:text="BLOCO · HOJE"
                 android:textColor="#201E1D"
@@ -43,12 +43,13 @@
         </LinearLayout>
 
         <!-- Refresh Button -->
-        <ImageButton
+        <ImageView
             android:id="@+id/btn_refresh"
             android:layout_width="32dp"
             android:layout_height="32dp"
             android:layout_marginEnd="6dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:background="@android:color/transparent"
+            android:clickable="true"
             android:contentDescription="Atualizar"
             android:padding="6dp"
             android:scaleType="fitCenter"
@@ -60,9 +61,12 @@
             android:layout_width="wrap_content"
             android:layout_height="32dp"
             android:background="@drawable/widget_btn_bg"
+            android:clickable="true"
             android:gravity="center"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp">
+            android:paddingLeft="10dp"
+            android:paddingTop="4dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="4dp">
 
             <ImageView
                 android:layout_width="14dp"
@@ -90,25 +94,41 @@
         android:layout_marginBottom="8dp"
         android:background="#DFDBD2" />
 
-    <!-- Empty State -->
-    <TextView
-        android:id="@+id/tv_empty"
+    <!-- Scrollable container for items -->
+    <ScrollView
+        android:id="@+id/widget_scroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:gravity="center"
-        android:letterSpacing="0.03"
-        android:padding="8dp"
-        android:text="Tudo em dia para hoje! ✦"
-        android:textColor="#8C8578"
-        android:textSize="12sp"
-        android:visibility="gone" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:scrollbars="none">
 
-    <!-- Container where items are populated -->
-    <LinearLayout
-        android:id="@+id/items_container"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Empty State -->
+            <TextView
+                android:id="@+id/tv_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:letterSpacing="0.03"
+                android:padding="8dp"
+                android:text="Tudo em dia para hoje! ✦\nToque para abrir o Bloco T."
+                android:textColor="#8C8578"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Container where items are populated -->
+            <LinearLayout
+                android:id="@+id/items_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </ScrollView>
 
 </LinearLayout>

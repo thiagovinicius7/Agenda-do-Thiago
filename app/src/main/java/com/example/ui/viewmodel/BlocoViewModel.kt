@@ -23,6 +23,7 @@ import com.example.notification.BillNotificationScheduler
 import com.example.notification.HabitNotificationScheduler
 import com.example.util.BillCalculations
 import com.example.util.HabitCalculations
+import com.example.widget.BlocoTodayWidgetProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -224,6 +225,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
     viewModelScope.launch {
       repository.deleteBill(billId)
       BillNotificationScheduler.cancelBillReminder(context, billId)
+      BlocoTodayWidgetProvider.updateAllWidgets(context)
       if (_uiState.value.selectedBillId == billId) {
         closeOverlay()
       }
@@ -242,6 +244,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
           amount = billWithStatus.bill.amount
         )
       }
+      repository.notifyWidgetUpdate()
     }
   }
 
@@ -297,6 +300,8 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
         BillNotificationScheduler.cancelBillReminder(context, bill.id)
       }
 
+      BlocoTodayWidgetProvider.updateAllWidgets(context)
+
       closeOverlay()
     }
   }
@@ -326,6 +331,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
   fun deleteHabit(habitId: String) {
     viewModelScope.launch {
       repository.deleteHabit(habitId)
+      repository.notifyWidgetUpdate()
       if (_uiState.value.selectedHabitId == habitId) {
         closeOverlay()
       }
@@ -503,6 +509,7 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
   fun toggleHabitDay(habitId: String, dateEpochDay: Long = HabitCalculations.todayEpochDay()) {
     viewModelScope.launch {
       repository.toggleHabitDay(habitId, dateEpochDay)
+      repository.notifyWidgetUpdate()
     }
   }
 
@@ -636,6 +643,8 @@ class BlocoViewModel(private val repository: BlocoRepository) : ViewModel() {
           HabitNotificationScheduler.cancelHabitReminder(context, habitId)
         }
       }
+
+      repository.notifyWidgetUpdate()
 
       if (isExisting) {
         _uiState.value = _uiState.value.copy(activeOverlay = ActiveOverlay.HABIT_DETAIL, selectedHabitId = habitId)

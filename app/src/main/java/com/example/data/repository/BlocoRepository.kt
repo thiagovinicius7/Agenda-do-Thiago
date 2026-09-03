@@ -43,7 +43,7 @@ class BlocoRepository(
   private val appContext: Context? = null
 ) {
 
-  private fun notifyWidgetUpdate() {
+  fun notifyWidgetUpdate() {
     appContext?.let { BlocoTodayWidgetProvider.updateAllWidgets(it) }
   }
 
