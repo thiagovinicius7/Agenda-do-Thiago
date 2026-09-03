@@ -33,6 +33,28 @@ class BlocoTodayWidgetProvider : AppWidgetProvider() {
     appWidgetManager: AppWidgetManager,
     appWidgetIds: IntArray
   ) {
+    // 1. Immediately provide an initial RemoteViews synchronously so launcher never fails or times out
+    for (appWidgetId in appWidgetIds) {
+      try {
+        val initialViews = RemoteViews(context.packageName, R.layout.widget_today_initial)
+        val openHojeIntent = Intent(context, MainActivity::class.java).apply {
+          flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+          putExtra("open_section", "HOJE")
+        }
+        val pendingOpenHoje = PendingIntent.getActivity(
+          context,
+          appWidgetId * 10 + 1,
+          openHojeIntent,
+          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        initialViews.setOnClickPendingIntent(R.id.widget_initial_root, pendingOpenHoje)
+        appWidgetManager.updateAppWidget(appWidgetId, initialViews)
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
+    }
+
+    // 2. Asynchronously load Room database and populate habits, bills, and events
     val pendingResult = goAsync()
     CoroutineScope(Dispatchers.IO).launch {
       try {
